@@ -268,35 +268,42 @@ def get_portfolio(db: Session = Depends(get_db)):
     total_value = 0
     total_investment = 0
     
-    for i, h in enumerate(holdings):
-        # Use lightweight price fetch instead of full analysis
-        current_price = h.avg_price  # default fallback
+    # Batch fetch ALL portfolio prices in ONE call
+    symbols = [h.symbol for h in holdings]
+    prices = {}
+    try:
+        if symbols:
+            data = yf.download(symbols, period="5d", group_by="ticker", progress=False, threads=False)
+            for sym in symbols:
+                try:
+                    if len(symbols) > 1:
+                        close_series = data[sym]['Close'].dropna()
+                    else:
+                        close_series = data['Close'].dropna()
+                    if not close_series.empty:
+                        prices[sym] = float(close_series.iloc[-1])
+                except Exception:
+                    pass
+            print(f"[Portfolio] Batch fetched prices for {len(prices)}/{len(symbols)} stocks")
+    except Exception as e:
+        print(f"[Portfolio] Batch download error: {e}")
+    
+    for h in holdings:
+        current_price = prices.get(h.symbol, h.avg_price)  # fallback to avg_price
         verdict = "HOLD"
         trust_score = 50
         
-        try:
-            if i > 0:
-                time.sleep(1.0)  # Rate limit delay
-            ticker = yf.Ticker(h.symbol)
-            hist = ticker.history(period="1d")
-            if not hist.empty:
-                current_price = float(hist['Close'].iloc[-1])
-                # Simple verdict based on price vs avg
-                change_pct = ((current_price - h.avg_price) / h.avg_price) * 100
-                if change_pct > 10:
-                    verdict = "BUY"
-                    trust_score = 70
-                elif change_pct > 0:
-                    verdict = "HOLD"
-                    trust_score = 55
-                else:
-                    verdict = "HOLD"
-                    trust_score = 40
-                print(f"[Portfolio] ✓ {h.symbol}: ₹{current_price:.2f}")
+        if h.symbol in prices:
+            change_pct = ((current_price - h.avg_price) / h.avg_price) * 100
+            if change_pct > 10:
+                verdict = "BUY"
+                trust_score = 70
+            elif change_pct > 0:
+                verdict = "HOLD"
+                trust_score = 55
             else:
-                print(f"[Portfolio] ✗ {h.symbol}: no data, using avg_price")
-        except Exception as e:
-            print(f"[Portfolio] ✗ {h.symbol}: {e}, using avg_price")
+                verdict = "HOLD"
+                trust_score = 40
         
         current_price = float(current_price)
         investment = h.quantity * h.avg_price
