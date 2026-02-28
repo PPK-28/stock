@@ -23,7 +23,7 @@
             <div class="login-subtitle">Stock Intelligence Platform</div>
             <div class="login-form">
                 <input type="password" id="login-pin" class="login-input" placeholder="Enter PIN" maxlength="6"
-                    autocomplete="off">
+                    autocomplete="off" inputmode="numeric" autocorrect="off" autocapitalize="off" spellcheck="false">
                 <button class="login-btn" onclick="verifyPin()">Unlock 🔓</button>
             </div>
             <div id="login-error" class="login-error"></div>
@@ -45,7 +45,7 @@
         }
 
         async function verifyPin() {
-            const pin = document.getElementById('login-pin').value;
+            const pin = document.getElementById('login-pin').value.trim();
             const hash = await sha256(pin);
             if (hash === PIN_HASH) {
                 localStorage.setItem(SESSION_KEY, JSON.stringify({ ts: Date.now() }));
