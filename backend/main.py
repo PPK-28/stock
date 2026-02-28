@@ -85,6 +85,42 @@ def _scheduler_thread():
 _sched_thread = threading.Thread(target=_scheduler_thread, daemon=True)
 _sched_thread.start()
 
+# --- Background Portfolio Analyzer (Daemon Thread) ---
+def _portfolio_analyzer_thread():
+    """Periodically analyzes portfolio holdings and caches the deeper AI verdicts for the UI."""
+    print("[Portfolio Analyzer] Started (daemon thread). Running every 15 mins...")
+    while True:
+        try:
+            # 1. Fetch symbols
+            session = SessionLocal()
+            holdings = session.query(models.Portfolio).filter(models.Portfolio.user_id == 1).all()
+            symbols = list(set([h.symbol for h in holdings]))
+            session.close()
+            
+            if symbols:
+                from backend.engines.analyzer import StockAnalyzer
+                from backend.jobs.scanner import _set_cached
+                analyzer = StockAnalyzer()
+                verdicts = {}
+                
+                print(f"[Portfolio Analyzer] Analyzing {len(symbols)} holdings deeply...")
+                for sym in symbols:
+                    res = analyzer.analyze_stock(sym)
+                    if res and res.get('verdict') != 'ERROR':
+                        verdicts[sym] = res
+                    time.sleep(2) # Avoid Yahoo Finance rate limits
+                
+                if verdicts:
+                    _set_cached("portfolio_verdicts", verdicts, ttl_seconds=3600)  # cache for 1 hour
+                    print(f"[Portfolio Analyzer] {len(verdicts)} deep verdicts cached!")
+        except Exception as e:
+            print(f"[Portfolio Analyzer] Error: {e}")
+            
+        time.sleep(900)  # Every 15 minutes
+
+_port_thread = threading.Thread(target=_portfolio_analyzer_thread, daemon=True)
+_port_thread.start()
+
 
 # --- Windows Hard Exit Workaround (Bypassing Uvicorn) ---
 import signal
@@ -288,12 +324,29 @@ def get_portfolio(db: Session = Depends(get_db)):
     except Exception as e:
         print(f"[Portfolio] Batch download error: {e}")
     
+    # Check deep analysis verdicts
+    cached_verdicts = _get_cached("portfolio_verdicts") or {}
+    
     for h in holdings:
         current_price = prices.get(h.symbol, h.avg_price)  # fallback to avg_price
         verdict = "HOLD"
         trust_score = 50
+        advisory_data = {
+            "entry": f"₹{h.avg_price}",
+            "target": f"{round(current_price * 1.05, 1)}",
+            "stop_loss": f"{round(current_price * 0.95, 1)}",
+            "analyst_rating": f"HOLD (Conf: 50%)"
+        }
         
-        if h.symbol in prices:
+        # 1. Use Deep Analysis if available
+        if h.symbol in cached_verdicts:
+            v_data = cached_verdicts[h.symbol]
+            verdict = v_data.get('verdict', 'HOLD')
+            trust_score = v_data.get('trust_score', 50)
+            advisory_data = v_data.get('advisory', advisory_data)
+        
+        # 2. Fallback to basic % change logic if deep is still pending
+        elif h.symbol in prices:
             change_pct = ((current_price - h.avg_price) / h.avg_price) * 100
             if change_pct > 10:
                 verdict = "BUY"
@@ -304,6 +357,7 @@ def get_portfolio(db: Session = Depends(get_db)):
             else:
                 verdict = "HOLD"
                 trust_score = 40
+            advisory_data["analyst_rating"] = f"{verdict} (Conf: {trust_score}%)"
         
         current_price = float(current_price)
         investment = h.quantity * h.avg_price
@@ -324,12 +378,7 @@ def get_portfolio(db: Session = Depends(get_db)):
             "pl_percent": round(pl_percent, 2),
             "verdict": verdict,
             "trust_score": trust_score,
-            "advisory": {
-                "entry": f"₹{h.avg_price}",
-                "target": f"{round(current_price * 1.05, 1)}",
-                "stop_loss": f"{round(current_price * 0.95, 1)}",
-                "analyst_rating": f"{verdict} (Conf: {trust_score}%)"
-            },
+            "advisory": advisory_data,
             "reasoning": f"Bought at ₹{h.avg_price}, now ₹{round(current_price, 2)}",
             "futures_data": {}
         })
