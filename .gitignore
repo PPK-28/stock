@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual Environment
+venv/
+.venv/
+env/
+Include/
+Lib/
+Scripts/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Env
+.env
+
+# Database (will be created fresh on cloud)
+stocks.db
+
+# Ngrok
+ngrok_bin/
+ngrok_new.zip
+
+# Other
+*.code-workspace
+SilentLauncher.vbs
+run_app.bat
+test_*.py
+seed_db.py

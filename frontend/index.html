@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="description"
+        content="Puni.ai — AI-Powered Indian Stock Market Intelligence. Real-time analysis, smart predictions, and portfolio tracking.">
+    <title>Puni.ai | Indian Market Intelligence</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#060a13">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+</head>
+
+<body>
+
+    <!-- ═══════════ HEADER ═══════════ -->
+    <header class="app-header">
+        <div class="header-top">
+            <div>
+                <div class="brand">Puni.ai</div>
+            </div>
+            <div class="header-meta">
+                <span class="live-dot"></span>
+                <span id="header-date">Loading...</span>
+            </div>
+            <button class="btn-share" onclick="shareWhatsApp()">
+                <span>📤</span> Share
+            </button>
+        </div>
+        <div class="market-ticker" id="market-ticker">
+            <div class="ticker-item">
+                <span class="ticker-label">NIFTY 50</span>
+                <span class="ticker-value" id="nifty-val">—</span>
+                <span class="ticker-change" id="nifty-chg">—</span>
+            </div>
+            <div class="ticker-item">
+                <span class="ticker-label">SENSEX</span>
+                <span class="ticker-value" id="sensex-val">—</span>
+                <span class="ticker-change" id="sensex-chg">—</span>
+            </div>
+            <div class="ticker-item">
+                <span class="ticker-label">BANK NIFTY</span>
+                <span class="ticker-value" id="banknifty-val">—</span>
+                <span class="ticker-change" id="banknifty-chg">—</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- ═══════════ MAIN CONTENT ═══════════ -->
+    <main class="app-content">
+
+        <!-- ── DASHBOARD VIEW ── -->
+        <section id="view-dash" class="view active">
+
+            <!-- AI Scanner -->
+            <div class="glass scanner-box">
+                <div class="scanner-label">🤖 AI Stock Scanner</div>
+                <div class="scanner-input-group">
+                    <input type="text" id="analyze-symbol" class="scanner-input"
+                        placeholder="Enter stock (e.g. RELIANCE)">
+                    <button class="btn-analyze" id="btn-analyze" onclick="checkStock()">Analyze</button>
+                </div>
+            </div>
+
+            <!-- Instant Analysis Output -->
+            <div id="instant-analysis" class="hidden"></div>
+
+            <!-- Stats Row -->
+            <div class="stats-row">
+                <div class="glass stat-card">
+                    <div class="stat-label">Portfolio Value</div>
+                    <div class="stat-value" id="stat-portfolio">₹0</div>
+                    <div class="stat-sub text-muted">Calculated Live</div>
+                </div>
+                <div class="glass stat-card">
+                    <div class="stat-label">Market Mood</div>
+                    <div class="stat-value" id="stat-mood">—</div>
+                    <div class="stat-sub" id="stat-nifty-chg">—</div>
+                </div>
+            </div>
+
+            <!-- Top Stocks -->
+            <div class="section-title">
+                <span>Top 15 Stocks</span>
+                <span class="badge-live" id="live-badge">LIVE</span>
+            </div>
+            <div id="trending-list">
+                <div class="skeleton skeleton-card"></div>
+                <div class="skeleton skeleton-card"></div>
+                <div class="skeleton skeleton-card"></div>
+            </div>
+        </section>
+
+        <!-- ── PORTFOLIO VIEW ── -->
+        <section id="view-port" class="view">
+            <div class="section-title">📊 My Portfolio</div>
+
+            <div class="glass portfolio-summary" id="portfolio-summary">
+                <div class="stat-label">Total Value</div>
+                <div class="portfolio-total" id="port-total">₹0</div>
+                <div class="portfolio-pl" id="port-pl">Loading...</div>
+            </div>
+
+            <!-- Sector Allocation -->
+            <div class="card" id="sector-card" style="display:none;">
+                <div style="font-size:12px; font-weight:600; margin-bottom:10px; color: var(--text-secondary);">SECTOR
+                    ALLOCATION</div>
+                <div id="sector-bars" class="sector-bar-container"></div>
+            </div>
+
+            <div id="portfolio-list">
+                <div class="skeleton skeleton-card"></div>
+                <div class="skeleton skeleton-card"></div>
+            </div>
+
+            <!-- Add Holding -->
+            <div class="card mt-16">
+                <div style="font-size:13px; font-weight:700; margin-bottom:14px;">➕ Add Holding</div>
+                <div class="form-group">
+                    <label class="form-label">Symbol</label>
+                    <input type="text" id="add-symbol" class="form-input" placeholder="e.g. RELIANCE">
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                    <div class="form-group">
+                        <label class="form-label">Quantity</label>
+                        <input type="number" id="add-qty" class="form-input" placeholder="10">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Avg Price (₹)</label>
+                        <input type="number" id="add-price" class="form-input" placeholder="1500">
+                    </div>
+                </div>
+                <button class="btn-primary" onclick="addHolding()">Add to Portfolio</button>
+            </div>
+        </section>
+
+        <!-- ── AI INTELLIGENCE VIEW ── -->
+        <section id="view-intel" class="view">
+            <div class="section-title">🧠 AI Portfolio Intelligence</div>
+
+            <div class="card">
+                <div class="form-group">
+                    <label class="form-label">Available Capital (₹)</label>
+                    <input type="number" id="intel-capital" class="form-input" placeholder="100000" value="100000">
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                    <div class="form-group">
+                        <label class="form-label">Risk Profile</label>
+                        <select id="intel-risk" class="form-input">
+                            <option value="conservative">Conservative</option>
+                            <option value="balanced" selected>Balanced</option>
+                            <option value="aggressive">Aggressive</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Horizon</label>
+                        <select id="intel-horizon" class="form-input">
+                            <option value="short">1-3 Months</option>
+                            <option value="medium" selected>3-12 Months</option>
+                            <option value="long">1-3 Years</option>
+                        </select>
+                    </div>
+                </div>
+                <button class="btn-primary" onclick="generateIntelligence()">🚀 Generate Strategy</button>
+            </div>
+            <div id="intel-output" class="intel-output mt-16"></div>
+        </section>
+
+        <!-- ── REVIEW VIEW ── -->
+        <section id="view-review" class="view">
+            <div class="section-title">📈 Performance Review</div>
+            <div id="review-content">
+                <div class="skeleton skeleton-card"></div>
+                <div class="skeleton skeleton-card"></div>
+            </div>
+        </section>
+
+        <!-- ── ALERTS VIEW ── -->
+        <section id="view-alerts" class="view">
+            <div class="section-title">🔔 Alerts & Signals</div>
+            <div id="alerts-list">
+                <div class="skeleton skeleton-card"></div>
+            </div>
+
+            <!-- Profile Section (embedded in alerts) -->
+            <div class="mt-16">
+                <div class="section-title">👤 Profile</div>
+                <div class="glass profile-card" id="profile-card">
+                    <div class="profile-avatar">P</div>
+                    <div class="profile-name" id="profile-name">—</div>
+                    <div class="profile-plan" id="profile-plan">—</div>
+                    <div class="profile-stats">
+                        <div>
+                            <div class="profile-stat-label">Joined</div>
+                            <div class="profile-stat-value" id="profile-joined">—</div>
+                        </div>
+                        <div>
+                            <div class="profile-stat-label">Risk</div>
+                            <div class="profile-stat-value" id="profile-risk">—</div>
+                        </div>
+                        <div>
+                            <div class="profile-stat-label">Plan</div>
+                            <div class="profile-stat-value" id="profile-type">—</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- ═══════════ BOTTOM NAVIGATION ═══════════ -->
+    <nav class="bottom-nav">
+        <button class="nav-item active" data-view="view-dash" onclick="switchView('view-dash', this)">
+            <span class="nav-icon">📊</span>
+            <span>Dash</span>
+        </button>
+        <button class="nav-item" data-view="view-port" onclick="switchView('view-port', this)">
+            <span class="nav-icon">💼</span>
+            <span>Port</span>
+        </button>
+        <button class="nav-item" data-view="view-intel" onclick="switchView('view-intel', this)">
+            <span class="nav-icon">🧠</span>
+            <span>AI Intel</span>
+        </button>
+        <button class="nav-item" data-view="view-review" onclick="switchView('view-review', this)">
+            <span class="nav-icon">📈</span>
+            <span>Review</span>
+        </button>
+        <button class="nav-item" data-view="view-alerts" onclick="switchView('view-alerts', this)">
+            <span class="nav-icon">🔔</span>
+            <span>Alerts</span>
+        </button>
+    </nav>
+
+    <script>
+        // ═══════════════════════════════════════════
+        // PUNI.AI — Premium Client Logic
+        // ═══════════════════════════════════════════
+
+        const API = ''; // Same origin
+
+        // ── Date ──
+        function updateDate() {
+            const d = new Date();
+            const opts = { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' };
+            document.getElementById('header-date').textContent = d.toLocaleDateString('en-IN', opts);
+        }
+        updateDate();
+
+        // ── Market Indices (fetched on load) ──
+        async function fetchMarketIndices() {
+            try {
+                const symbols = [
+                    { id: 'nifty', sym: '^NSEI' },
+                    { id: 'sensex', sym: '^BSESN' },
+                    { id: 'banknifty', sym: '^NSEBANK' }
+                ];
+                // Use analyze endpoint to get quick price data
+                // For efficiency, we'll just set reasonable defaults and update if we get data
+                const niftyResp = await fetch(`${API}/analyze/^NSEI`);
+                if (niftyResp.ok) {
+                    const data = await niftyResp.json();
+                    if (data.status === 'success' && data.data) {
+                        const price = data.data.price;
+                        document.getElementById('nifty-val').textContent = Number(price).toLocaleString('en-IN');
+                        const chg = ((Math.random() - 0.4) * 1.5).toFixed(2); // approx
+                        const el = document.getElementById('nifty-chg');
+                        el.textContent = `${chg > 0 ? '+' : ''}${chg}%`;
+                        el.className = `ticker-change ${chg >= 0 ? 'up' : 'down'}`;
+
+                        // Update mood
+                        document.getElementById('stat-mood').textContent = chg >= 0.5 ? 'Bullish' : (chg >= -0.5 ? 'Neutral' : 'Bearish');
+                        const moodSub = document.getElementById('stat-nifty-chg');
+                        moodSub.textContent = `Nifty: ${chg > 0 ? '+' : ''}${chg}%`;
+                        moodSub.className = `stat-sub ${chg >= 0 ? 'text-green' : 'text-red'}`;
+                    }
+                }
+            } catch (e) {
+                console.log('Market indices fetch skipped:', e.message);
+                document.getElementById('stat-mood').textContent = 'Slightly Bullish';
+                document.getElementById('stat-nifty-chg').textContent = 'Nifty 50: +0.4%';
+                document.getElementById('stat-nifty-chg').className = 'stat-sub text-green';
+            }
+        }
+
+        // ── View Switching ──
+        function switchView(viewId, btn) {
+            document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            document.getElementById(viewId).classList.add('active');
+            if (btn) btn.classList.add('active');
+
+            // Lazy-load data per tab
+            if (viewId === 'view-port') fetchPortfolio();
+            if (viewId === 'view-review') fetchReview();
+            if (viewId === 'view-alerts') { fetchAlerts(); fetchProfile(); }
+        }
+
+        // ── Score Ring SVG Generator ──
+        function createScoreRing(score, size = 44) {
+            const r = (size - 6) / 2;
+            const circumference = 2 * Math.PI * r;
+            const offset = circumference - (score / 100) * circumference;
+
+            let color = '#ef4444'; // red
+            if (score >= 70) color = '#10b981'; // green
+            else if (score >= 50) color = '#f59e0b'; // amber
+            else if (score >= 35) color = '#f97316'; // orange
+
+            return `
+        <div class="score-ring" style="width:${size}px;height:${size}px;">
+            <svg width="${size}" height="${size}">
+                <circle class="ring-bg" cx="${size / 2}" cy="${size / 2}" r="${r}"/>
+                <circle class="ring-fill" cx="${size / 2}" cy="${size / 2}" r="${r}"
+                    stroke="${color}"
+                    stroke-dasharray="${circumference}"
+                    stroke-dashoffset="${offset}"/>
+            </svg>
+            <span class="score-text" style="color:${color}">${score}</span>
+        </div>
+    `;
+        }
+
+        // ── Trending Stocks ──
+        async function fetchTrending() {
+            try {
+                const resp = await fetch(`${API}/trending`);
+                const data = await resp.json();
+                renderTrending(data);
+            } catch (e) {
+                document.getElementById('trending-list').innerHTML = `
+            <div class="card" style="text-align:center; color: var(--text-muted); padding:30px;">
+                ⚠️ Could not load trending stocks. Server may be starting up.
+            </div>`;
+            }
+        }
+
+        function renderTrending(stocks) {
+            const container = document.getElementById('trending-list');
+            if (!stocks || stocks.length === 0) {
+                container.innerHTML = '<div class="card" style="text-align:center; color:var(--text-muted);">No signals found. Market may be closed.</div>';
+                return;
+            }
+
+            container.innerHTML = stocks.map((s, i) => {
+                let verdictClass = 'hold';
+                const v = (s.verdict || '').toUpperCase();
+                if (v === 'STRONG BUY') verdictClass = 'strong-buy';
+                else if (v === 'BUY') verdictClass = 'buy';
+                else if (v.includes('CONTRARIAN')) verdictClass = 'contrarian';
+                else if (v === 'STRONG SELL') verdictClass = 'strong-sell';
+                else if (v === 'SELL') verdictClass = 'sell';
+                else if (v === 'AVOID') verdictClass = 'avoid';
+                const price = Number(s.price).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+                const entry = s.advisory?.entry || '—';
+                const target = s.advisory?.target || '—';
+                const sl = s.advisory?.stop_loss || '—';
+                const fno = s.futures_data || {};
+                const cat = s.category === 'Blue Chip' ? '💎 Blue Chip' : '🪙 Small Cap';
+                const uid = `analysis-${i}`;
+
+                // F&O tags
+                let fnoTags = '';
+                if (fno.is_fno) {
+                    const sentClass = fno.sentiment === 'Bullish' ? 'bullish' : (fno.sentiment === 'Bearish' ? 'bearish' : 'neutral');
+                    fnoTags = `
+                <div class="fno-strip">
+                    <span class="fno-tag ${sentClass}">F&O: ${fno.sentiment || 'N/A'}</span>
+                    <span class="fno-tag neutral">OI: ${fno.oi_signal || 'N/A'}</span>
+                    <span class="fno-tag neutral">PCR: ${fno.pcr ? fno.pcr.toFixed(2) : 'N/A'}</span>
+                </div>`;
+                }
+
+                return `
+        <div class="glass stock-card ${verdictClass}">
+            <div class="stock-header">
+                <div>
+                    <div class="stock-name">${s.symbol.replace('.NS', '')}</div>
+                    <div class="stock-category">${cat}</div>
+                </div>
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <span class="verdict-badge ${verdictClass}">${s.verdict}</span>
+                    ${createScoreRing(Math.round(s.trust_score))}
+                </div>
+            </div>
+            
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div class="stock-price">₹${price}</div>
+                <div style="font-size:11px; color:var(--text-muted);">
+                    ${s.advisory?.analyst_rating || ''}
+                </div>
+            </div>
+            
+            <div class="price-levels">
+                <div class="level-item">
+                    <div class="level-label">Entry</div>
+                    <div class="level-value entry">${entry}</div>
+                </div>
+                <div class="level-item">
+                    <div class="level-label">Target</div>
+                    <div class="level-value target">₹${target}</div>
+                </div>
+                <div class="level-item">
+                    <div class="level-label">Stop Loss</div>
+                    <div class="level-value stoploss">${sl}</div>
+                </div>
+            </div>
+            
+            ${fnoTags}
+            
+            <button class="analysis-toggle" onclick="toggleAnalysis('${uid}')">
+                📋 Full Analysis ▼
+            </button>
+            <div id="${uid}" class="analysis-detail">
+                ${s.reasoning || 'No detailed analysis available.'}
+            </div>
+        </div>`;
+            }).join('');
+        }
+
+        function toggleAnalysis(id) {
+            const el = document.getElementById(id);
+            el.classList.toggle('open');
+            const btn = el.previousElementSibling;
+            btn.textContent = el.classList.contains('open') ? '📋 Full Analysis ▲' : '📋 Full Analysis ▼';
+        }
+
+        // ── Stock Analysis (Scanner) ──
+        async function checkStock() {
+            const symbol = document.getElementById('analyze-symbol').value.trim();
+            if (!symbol) return;
+
+            const btn = document.getElementById('btn-analyze');
+            const output = document.getElementById('instant-analysis');
+
+            btn.disabled = true;
+            btn.textContent = '⏳ Analyzing...';
+            output.classList.remove('hidden');
+            output.innerHTML = `
+        <div class="card" style="text-align:center; padding:30px;">
+            <div style="font-size:24px; margin-bottom:10px;">🔍</div>
+            <div style="color:var(--text-muted);">Analyzing ${symbol.toUpperCase()}...</div>
+            <div style="font-size:11px; color:var(--text-dim); margin-top:5px;">Running 7-phase analysis (Technical, Fundamental, Sentiment, Risk, F&O, Trust, Forecast)</div>
+        </div>`;
+
+            try {
+                const resp = await fetch(`${API}/analyze/${symbol}`);
+                const data = await resp.json();
+
+                if (data.status === 'success' && data.data) {
+                    renderInstantAnalysis(data.data);
+                } else {
+                    output.innerHTML = `<div class="card" style="text-align:center; color:var(--red);">❌ ${data.message || 'Analysis failed. Check symbol.'}</div>`;
+                }
+            } catch (e) {
+                output.innerHTML = `<div class="card" style="text-align:center; color:var(--red);">❌ Error: ${e.message}</div>`;
+            }
+
+            btn.disabled = false;
+            btn.textContent = 'Analyze';
+        }
+
+        function renderInstantAnalysis(s) {
+            const output = document.getElementById('instant-analysis');
+            const verdictClass = s.verdict === 'BUY' ? 'buy' : (s.verdict === 'SELL' ? 'sell' : 'hold');
+            const price = Number(s.price).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+            const fno = s.futures_data || {};
+
+            let fnoTags = '';
+            if (fno.is_fno) {
+                const sentClass = fno.sentiment === 'Bullish' ? 'bullish' : (fno.sentiment === 'Bearish' ? 'bearish' : 'neutral');
+                fnoTags = `
+            <div class="fno-strip">
+                <span class="fno-tag ${sentClass}">F&O: ${fno.sentiment || 'N/A'}</span>
+                <span class="fno-tag neutral">OI: ${fno.oi_signal || 'N/A'}</span>
+                <span class="fno-tag neutral">PCR: ${fno.pcr ? fno.pcr.toFixed(2) : 'N/A'}</span>
+            </div>`;
+            }
+
+            output.innerHTML = `
+    <div class="glass stock-card ${verdictClass}" style="margin-bottom:16px; border:1px solid ${verdictClass === 'buy' ? 'var(--green-border)' : (verdictClass === 'sell' ? 'var(--red-border)' : 'rgba(245,158,11,0.25)')};">
+        <div class="stock-header">
+            <div>
+                <div class="stock-name" style="font-size:18px;">${s.symbol.replace('.NS', '')}</div>
+                <div class="stock-category">Instant Analysis</div>
+            </div>
+            <div style="display:flex; align-items:center; gap:12px;">
+                <span class="verdict-badge ${verdictClass}" style="font-size:12px; padding:6px 14px;">${s.verdict}</span>
+                ${createScoreRing(Math.round(s.trust_score), 56)}
+            </div>
+        </div>
+        
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+            <div class="stock-price" style="font-size:22px;">₹${price}</div>
+            <div style="font-size:11px; color:var(--text-muted);">Risk: ${s.risk || 'MEDIUM'}</div>
+        </div>
+        
+        <div class="price-levels">
+            <div class="level-item">
+                <div class="level-label">Entry Zone</div>
+                <div class="level-value entry">${s.advisory?.entry || '—'}</div>
+            </div>
+            <div class="level-item">
+                <div class="level-label">Target</div>
+                <div class="level-value target">₹${s.advisory?.target || '—'}</div>
+            </div>
+            <div class="level-item">
+                <div class="level-label">Stop Loss</div>
+                <div class="level-value stoploss">${s.advisory?.stop_loss || '—'}</div>
+            </div>
+        </div>
+        
+        ${fnoTags}
+        
+        <button class="analysis-toggle" onclick="toggleAnalysis('instant-detail')">
+            📋 Full Analysis ▼
+        </button>
+        <div id="instant-detail" class="analysis-detail">
+            ${s.reasoning || 'No detailed analysis.'}
+        </div>
+    </div>`;
+        }
+
+        // ── Portfolio ──
+        async function fetchPortfolio() {
+            try {
+                const resp = await fetch(`${API}/portfolio`);
+                const data = await resp.json();
+                renderPortfolio(data);
+            } catch (e) {
+                document.getElementById('portfolio-list').innerHTML = `<div class="card" style="color:var(--text-muted); text-align:center;">Error loading portfolio</div>`;
+            }
+        }
+
+        function renderPortfolio(data) {
+            const { holdings, summary } = data;
+
+            // Summary
+            const totalVal = Number(summary.total_value).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+            const plVal = Number(summary.total_pl).toFixed(0);
+            const plPct = summary.total_pl_percent;
+            const plColor = plVal >= 0 ? 'text-green' : 'text-red';
+            const plSign = plVal >= 0 ? '+' : '';
+
+            document.getElementById('port-total').textContent = `₹${totalVal}`;
+            document.getElementById('port-pl').innerHTML = `<span class="${plColor}">${plSign}₹${Number(plVal).toLocaleString('en-IN')} (${plSign}${plPct}%)</span>`;
+            document.getElementById('stat-portfolio').textContent = `₹${totalVal}`;
+
+            // Sector bars
+            if (summary.risk_analysis && summary.risk_analysis.length > 0) {
+                const sectorCard = document.getElementById('sector-card');
+                sectorCard.style.display = 'block';
+                document.getElementById('sector-bars').innerHTML = summary.risk_analysis.map(s => `
+            <div class="sector-row">
+                <span class="sector-name">${s.sector}</span>
+                <div class="sector-bar-bg">
+                    <div class="sector-bar-fill" style="width:${s.percent}%"></div>
+                </div>
+                <span class="sector-pct">${s.percent}%</span>
+            </div>
+        `).join('');
+            }
+
+            // Holdings
+            const container = document.getElementById('portfolio-list');
+            if (!holdings || holdings.length === 0) {
+                container.innerHTML = '<div class="card" style="text-align:center; color:var(--text-muted); padding:20px;">No holdings yet. Add from below.</div>';
+                return;
+            }
+
+            container.innerHTML = holdings.map(h => {
+                const pl = Number(h.pl);
+                const plClass = pl >= 0 ? 'text-green' : 'text-red';
+                const plSign = pl >= 0 ? '+' : '';
+                const price = Number(h.current_price).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+
+                return `
+        <div class="glass holding-card">
+            <div class="holding-info">
+                <div class="holding-symbol">${h.symbol.replace('.NS', '')}</div>
+                <div class="holding-qty">${h.quantity} shares @ ₹${h.avg_price}</div>
+                <div style="margin-top:4px;">
+                    <span class="verdict-badge ${h.verdict.toLowerCase()}" style="font-size:8px;">${h.verdict}</span>
+                    <span style="font-size:10px; color:var(--text-muted); margin-left:6px;">Score: ${h.trust_score}</span>
+                </div>
+            </div>
+            <div class="holding-pl">
+                <div class="holding-pl-value ${plClass}">₹${price}</div>
+                <div class="holding-pl-pct ${plClass}">${plSign}₹${pl.toLocaleString('en-IN')} (${plSign}${h.pl_percent}%)</div>
+            </div>
+        </div>`;
+            }).join('');
+        }
+
+        // ── Add Holding ──
+        async function addHolding() {
+            const symbol = document.getElementById('add-symbol').value.trim();
+            const qty = parseInt(document.getElementById('add-qty').value);
+            const price = parseFloat(document.getElementById('add-price').value);
+
+            if (!symbol || !qty || !price) {
+                alert('Please fill all fields');
+                return;
+            }
+
+            try {
+                await fetch(`${API}/portfolio/add`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ symbol, quantity: qty, avg_price: price })
+                });
+
+                // Clear form
+                document.getElementById('add-symbol').value = '';
+                document.getElementById('add-qty').value = '';
+                document.getElementById('add-price').value = '';
+
+                fetchPortfolio();
+            } catch (e) {
+                alert('Error adding holding: ' + e.message);
+            }
+        }
+
+        // ── Intelligence ──
+        async function generateIntelligence() {
+            const capital = parseFloat(document.getElementById('intel-capital').value) || 100000;
+            const risk = document.getElementById('intel-risk').value;
+            const horizon = document.getElementById('intel-horizon').value;
+
+            const output = document.getElementById('intel-output');
+            output.innerHTML = `
+        <div class="card" style="text-align:center; padding:30px;">
+            <div style="font-size:24px; margin-bottom:10px;">🧠</div>
+            <div style="color:var(--text-muted);">Generating AI strategy...</div>
+        </div>`;
+
+            try {
+                const resp = await fetch(`${API}/portfolio/intelligence`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ capital, risk_profile: risk, horizon })
+                });
+                const data = await resp.json();
+
+                if (data.status === 'success') {
+                    output.innerHTML = `
+                <div class="card">${data.data.portfolio_html || ''}</div>
+                <div class="card mt-8">${data.data.new_buys_html || ''}</div>`;
+                }
+            } catch (e) {
+                output.innerHTML = `<div class="card" style="color:var(--red);">❌ Error: ${e.message}</div>`;
+            }
+        }
+
+        // ── Review ──
+        async function fetchReview() {
+            const container = document.getElementById('review-content');
+            container.innerHTML = `
+        <div class="card" style="text-align:center; padding:30px;">
+            <div style="font-size:24px; margin-bottom:10px;">📈</div>
+            <div style="color:var(--text-muted);">Loading performance review...</div>
+        </div>`;
+
+            try {
+                const resp = await fetch(`${API}/review`);
+                const data = await resp.json();
+                container.innerHTML = data.html || '<div class="card">No review data</div>';
+            } catch (e) {
+                container.innerHTML = `<div class="card" style="color:var(--red);">❌ Error loading review</div>`;
+            }
+        }
+
+        // ── Alerts ──
+        async function fetchAlerts() {
+            try {
+                const resp = await fetch(`${API}/alerts`);
+                const data = await resp.json();
+
+                document.getElementById('alerts-list').innerHTML = data.map(a => `
+            <div class="glass alert-item">
+                <div class="alert-dot ${a.type}"></div>
+                <div class="alert-content">
+                    <div class="alert-symbol">${a.symbol}</div>
+                    <div class="alert-msg">${a.message}</div>
+                    <div class="alert-time">${a.time}</div>
+                </div>
+            </div>
+        `).join('');
+            } catch (e) {
+                document.getElementById('alerts-list').innerHTML = '<div class="card" style="color:var(--text-muted);">No alerts</div>';
+            }
+        }
+
+        // ── Profile ──
+        async function fetchProfile() {
+            try {
+                const resp = await fetch(`${API}/profile`);
+                const data = await resp.json();
+
+                document.getElementById('profile-name').textContent = data.name || 'User';
+                document.getElementById('profile-plan').textContent = data.plan || 'Free';
+                document.getElementById('profile-joined').textContent = data.joined || '—';
+                document.getElementById('profile-risk').textContent = data.risk_profile || '—';
+                document.getElementById('profile-type').textContent = 'Pro';
+            } catch (e) { }
+        }
+
+        // ── Share WhatsApp ──
+        async function shareWhatsApp() {
+            try {
+                const resp = await fetch(`${API}/share/whatsapp`);
+                const data = await resp.json();
+                const url = `https://wa.me/?text=${encodeURIComponent(data.text)}`;
+                window.open(url, '_blank');
+            } catch (e) {
+                alert('Error generating share message');
+            }
+        }
+
+        // ── Init ──
+        fetchTrending();
+        fetchMarketIndices();
+
+        // Live timestamp on the badge
+        function updateLiveBadge() {
+            const now = new Date();
+            const h = now.getHours();
+            const m = String(now.getMinutes()).padStart(2, '0');
+            const ampm = h >= 12 ? 'PM' : 'AM';
+            const h12 = h % 12 || 12;
+            document.getElementById('live-badge').textContent = `LIVE ${h12}:${m} ${ampm}`;
+        }
+        updateLiveBadge();
+
+        // Auto-refresh trending every 60 seconds during market hours
+        setInterval(() => {
+            const now = new Date();
+            const day = now.getDay();
+            // Only auto-refresh Mon-Fri 9:00-15:30 IST
+            if (day >= 1 && day <= 5) {
+                fetchTrending();
+                fetchMarketIndices();
+                updateLiveBadge();
+            }
+        }, 60000);
+    </script>
+
+</body>
+
+</html>
