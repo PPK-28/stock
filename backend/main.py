@@ -25,6 +25,42 @@ from backend.engines.performance_review import PerformanceReviewEngine
 # Create database tables automatically
 models.Base.metadata.create_all(bind=db.engine)
 
+# --- Seed Default Portfolio (ensures data persists on cloud restarts) ---
+def _seed_portfolio():
+    """Seeds portfolio if empty (handles Railway's ephemeral SQLite)."""
+    session = db.SessionLocal()
+    try:
+        # Check if user exists
+        user = session.query(models.User).filter_by(id=1).first()
+        if not user:
+            user = models.User(id=1, email="praka@puniai.com", password_hash="seeded")
+            session.add(user)
+            session.commit()
+        
+        # Check if portfolio is empty
+        count = session.query(models.Portfolio).count()
+        if count == 0:
+            holdings = [
+                models.Portfolio(user_id=1, symbol="IRFC.NS", quantity=850, avg_price=24.14),
+                models.Portfolio(user_id=1, symbol="SBIN.NS", quantity=15, avg_price=195.2),
+                models.Portfolio(user_id=1, symbol="TMCV.NS", quantity=75, avg_price=27.07),
+                models.Portfolio(user_id=1, symbol="TMPV.NS", quantity=75, avg_price=59.83),
+                models.Portfolio(user_id=1, symbol="SILVERBEES.NS", quantity=97, avg_price=235.97),
+                models.Portfolio(user_id=1, symbol="YESBANK.NS", quantity=450, avg_price=21.15),
+            ]
+            session.add_all(holdings)
+            session.commit()
+            print("[Seed] Portfolio seeded with 6 holdings")
+        else:
+            print(f"[Seed] Portfolio already has {count} holdings — skipping")
+    except Exception as e:
+        print(f"[Seed] Error: {e}")
+        session.rollback()
+    finally:
+        session.close()
+
+_seed_portfolio()
+
 
 # --- Background Scheduler (Daemon Thread) ---
 def _scheduler_thread():
