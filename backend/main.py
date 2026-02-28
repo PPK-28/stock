@@ -92,7 +92,7 @@ def _portfolio_analyzer_thread():
     while True:
         try:
             # 1. Fetch symbols
-            session = SessionLocal()
+            session = db.SessionLocal()
             holdings = session.query(models.Portfolio).filter(models.Portfolio.user_id == 1).all()
             symbols = list(set([h.symbol for h in holdings]))
             session.close()
@@ -105,18 +105,30 @@ def _portfolio_analyzer_thread():
                 
                 print(f"[Portfolio Analyzer] Analyzing {len(symbols)} holdings deeply...")
                 for sym in symbols:
-                    res = analyzer.analyze_stock(sym)
-                    if res and res.get('verdict') != 'ERROR':
-                        verdicts[sym] = res
-                    time.sleep(2) # Avoid Yahoo Finance rate limits
+                    try:
+                        res = analyzer.analyze_stock(sym)
+                        if res and res.get('verdict') != 'ERROR':
+                            verdicts[sym] = res
+                            print(f"[Portfolio Analyzer] Success: {sym}")
+                        else:
+                            print(f"[Portfolio Analyzer] Failed to get deep analysis for {sym}")
+                    except Exception as e:
+                        print(f"[Portfolio Analyzer] Exception analyzing {sym}: {e}")
+                        
+                    time.sleep(3) # 3s delay to prevent Yahoo Finance block
                 
                 if verdicts:
-                    _set_cached("portfolio_verdicts", verdicts)  # cache logic updated
+                    _set_cached("portfolio_verdicts", verdicts)
                     print(f"[Portfolio Analyzer] {len(verdicts)} deep verdicts cached!")
         except Exception as e:
-            print(f"[Portfolio Analyzer] Error: {e}")
+            print(f"[Portfolio Analyzer] Critical Error: {e}")
             
-        time.sleep(900)  # Every 15 minutes
+        # Retry logic: If empty (failed/blocked), try again in 1 min. Otherwise wait 15 mins.
+        if 'verdicts' in locals() and len(verdicts) > 0:
+            time.sleep(900)  # Every 15 minutes
+        else:
+            print("[Portfolio Analyzer] No verdicts retrieved (rate limit?). Retrying in 60s...")
+            time.sleep(60)
 
 _port_thread = threading.Thread(target=_portfolio_analyzer_thread, daemon=True)
 _port_thread.start()
@@ -347,9 +359,11 @@ def get_portfolio(db: Session = Depends(get_db)):
         
         # 2. Fallback if deep AI is still running in background
         elif h.symbol in prices:
-            verdict = "ANALYZING..."
-            trust_score = 0
-            advisory_data["analyst_rating"] = "Running AI Models..."
+            verdict = "HOLD"
+            trust_score = 50
+            advisory_data["analyst_rating"] = "HOLD (Basic)"
+            advisory_data["target"] = f"{round(current_price * 1.05, 1)}"
+            advisory_data["stop_loss"] = f"{round(current_price * 0.95, 1)}"
         
         current_price = float(current_price)
         investment = h.quantity * h.avg_price
