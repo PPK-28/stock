@@ -1,6 +1,7 @@
 
 from backend.engines.analyzer import StockAnalyzer
-import pandas as pd
+from backend.jobs.scanner import _get_cached, _set_cached
+import yfinance as yf
 import datetime
 
 class PerformanceReviewEngine:
@@ -8,122 +9,127 @@ class PerformanceReviewEngine:
         self.analyzer = StockAnalyzer()
 
     def generate_review(self, benchmark_index="NIFTY 50"):
-        # 1. Mock Input Data (entry prices updated to recent realistic levels)
+        # Check cache first
+        cached = _get_cached("review_data")
+        if cached:
+            print("[Review] Returning cached data")
+            return cached
+        
+        # Portfolio recommendations to review
         mock_portfolio = [
             {"ticker": "RELIANCE", "reco_price": 1350, "action": "BUY", "target": 1550, "stop_loss": 1280, "date": "20-Feb"},
             {"ticker": "HDFCBANK", "reco_price": 860, "action": "BUY", "target": 950, "stop_loss": 820, "date": "21-Feb"},
             {"ticker": "YESBANK", "reco_price": 19.5, "action": "BUY", "target": 24, "stop_loss": 17, "date": "22-Feb"},
-            {"ticker": "TATASTEEL", "reco_price": 135, "action": "BUY", "target": 160, "stop_loss": 125, "date": "24-Feb"},
+            {"ticker": "SBIN", "reco_price": 780, "action": "BUY", "target": 850, "stop_loss": 740, "date": "24-Feb"},
             {"ticker": "INFY", "reco_price": 1580, "action": "BUY", "target": 1750, "stop_loss": 1500, "date": "24-Feb"},
         ]
         
-        benchmark_return = 1.8 # Nifty +1.8%
+        benchmark_return = 1.8
+        
+        # Batch fetch ALL review stock prices in ONE call
+        symbols = [item['ticker'] + ".NS" for item in mock_portfolio]
+        prices = {}
+        try:
+            data = yf.download(symbols, period="5d", group_by="ticker", progress=False, threads=False)
+            for sym in symbols:
+                try:
+                    if len(symbols) > 1:
+                        close_series = data[sym]['Close'].dropna()
+                    else:
+                        close_series = data['Close'].dropna()
+                    if not close_series.empty:
+                        prices[sym] = float(close_series.iloc[-1])
+                except Exception:
+                    pass
+            print(f"[Review] Batch fetched {len(prices)}/{len(symbols)} prices")
+        except Exception as e:
+            print(f"[Review] Batch error: {e}")
         
         results = {"table": [], "app_score": 0, "avg_return": 0, "hit_rate": 0, "outperform_rate": 0, "total": 0}
-        
         total_pnl = 0
         hits = 0
         outperforms = 0
-        
-        # Track winners and losers for dynamic notes
         winners = []
         losers = []
         
-        # 2. Process Each Stock
         for item in mock_portfolio:
             sym = item['ticker'] + ".NS"
-            try:
-                stats = self.analyzer.analyze_stock(sym) 
-                if not stats: continue
-                
-                price_now = stats['price']
-                
-                # 1) Price Change %
-                pnl_pct = ((price_now - item['reco_price']) / item['reco_price']) * 100
-                rel_perf = pnl_pct - benchmark_return
-                
-                # 2) Performance Tag
-                if rel_perf > 3: tag = "OUTPERFORM"
-                elif rel_perf < -3: tag = "UNDERPERFORM"
-                else: tag = "IN LINE"
-                
-                if "OUTPERFORM" in tag: outperforms += 1
-                
-                # 3) Idea Score (0-100)
-                idea_score = 50
-                is_correct_dir = False
-                
-                if item['action'] == "BUY":
-                    if pnl_pct > 0: 
-                        is_correct_dir = True
-                        idea_score += 20 # Correct Direction
-                    else:
-                        idea_score -= 20 # Wrong Direction
-                
-                # Benchmark Adjustment
-                if rel_perf > 0: idea_score += 15
-                elif rel_perf < -2: idea_score -= 15
-                
-                # Clip Score
-                idea_score = max(0, min(100, idea_score))
-                
-                if is_correct_dir: hits += 1
-                total_pnl += pnl_pct
-                
-                # Track winners/losers for dynamic notes
-                if pnl_pct > 0:
-                    winners.append({"ticker": item['ticker'], "pnl": round(pnl_pct, 1)})
-                else:
-                    losers.append({"ticker": item['ticker'], "pnl": round(pnl_pct, 1)})
-                
-                # Add Row
-                results['table'].append({
-                    "date": item['date'],
-                    "ticker": item['ticker'],
-                    "action": item['action'],
-                    "entry": item['reco_price'],
-                    "now": price_now,
-                    "pnl": round(pnl_pct, 1),
-                    "vs_bench": round(rel_perf, 1),
-                    "tag": tag,
-                    "score": int(idea_score)
-                })
-                
-            except Exception as e:
+            if sym not in prices:
                 continue
+            
+            price_now = prices[sym]
+            
+            pnl_pct = ((price_now - item['reco_price']) / item['reco_price']) * 100
+            rel_perf = pnl_pct - benchmark_return
+            
+            if rel_perf > 3: tag = "OUTPERFORM"
+            elif rel_perf < -3: tag = "UNDERPERFORM"
+            else: tag = "IN LINE"
+            
+            if "OUTPERFORM" in tag: outperforms += 1
+            
+            idea_score = 50
+            is_correct_dir = False
+            
+            if item['action'] == "BUY":
+                if pnl_pct > 0: 
+                    is_correct_dir = True
+                    idea_score += 20
+                else:
+                    idea_score -= 20
+            
+            if rel_perf > 0: idea_score += 15
+            elif rel_perf < -2: idea_score -= 15
+            
+            idea_score = max(0, min(100, idea_score))
+            
+            if is_correct_dir: hits += 1
+            total_pnl += pnl_pct
+            
+            if pnl_pct > 0:
+                winners.append({"ticker": item['ticker'], "pnl": round(pnl_pct, 1)})
+            else:
+                losers.append({"ticker": item['ticker'], "pnl": round(pnl_pct, 1)})
+            
+            results['table'].append({
+                "date": item['date'],
+                "ticker": item['ticker'],
+                "action": item['action'],
+                "entry": item['reco_price'],
+                "now": round(price_now, 2),
+                "pnl": round(pnl_pct, 1),
+                "vs_bench": round(rel_perf, 1),
+                "tag": tag,
+                "score": int(idea_score)
+            })
                 
-        # 3. Overall App Score Calculation
         count = len(results['table'])
         if count > 0:
             avg_ret = total_pnl / count
             hit_rate = (hits / count) * 100
             outperform_rate = (outperforms / count) * 100
             
-            # Base logic
             app_score = 50
-            
-            # Return vs Bench
             if avg_ret >= benchmark_return + 3: app_score += 25
-            elif avg_ret >= benchmark_return - 3: app_score += 10 # In line
-            else: app_score -= 10 # Under
+            elif avg_ret >= benchmark_return - 3: app_score += 10
+            else: app_score -= 10
             
-            # Hit Rate Bonus
             if hit_rate >= 70: app_score += 25
             elif hit_rate >= 50: app_score += 15
-            else: app_score += 0
             
             results['app_score'] = int(max(0, min(100, app_score)))
             results['avg_return'] = round(avg_ret, 1)
             results['hit_rate'] = round(hit_rate, 1)
             results['total'] = count
 
-        return self._generate_html_report(results, benchmark_return, winners, losers)
+        html = self._generate_html_report(results, benchmark_return, winners, losers)
+        _set_cached("review_data", html)
+        return html
 
     def _generate_html_report(self, data, bench_ret, winners, losers):
         s = data['app_score']
         score_color = "#10b981" if s >= 70 else ("#f59e0b" if s >= 50 else "#ef4444")
         
-        # BLOCK 1: SHORT SUMMARY
         html = f"""
         <div class="glass" style="padding:20px; margin-bottom:20px;">
             <div style="font-size:12px; color:#aaa; margin-bottom:5px;">LAST 7 DAYS REVIEW</div>
@@ -139,7 +145,6 @@ class PerformanceReviewEngine:
         </div>
         """
         
-        # BLOCK 2: CARD-BASED LAYOUT (mobile-friendly, no horizontal scroll)
         html += '<div style="display:flex; flex-direction:column; gap:12px; margin-bottom:20px;">'
         
         for r in data['table']:
@@ -148,15 +153,12 @@ class PerformanceReviewEngine:
             pnl_sign = "+" if r['pnl'] > 0 else ""
             bench_sign = "+" if r['vs_bench'] > 0 else ""
             
-            # Tag styling
             tag_bg = "rgba(16,185,129,0.15)" if r['tag'] == "OUTPERFORM" else (
                 "rgba(239,68,68,0.15)" if r['tag'] == "UNDERPERFORM" else "rgba(255,255,255,0.05)"
             )
             tag_color = "#10b981" if r['tag'] == "OUTPERFORM" else (
                 "#ef4444" if r['tag'] == "UNDERPERFORM" else "#aaa"
             )
-            
-            # Score bar color
             sc_color = "#10b981" if r['score'] >= 65 else ("#f59e0b" if r['score'] >= 45 else "#ef4444")
             
             html += f"""
@@ -173,8 +175,8 @@ class PerformanceReviewEngine:
                     </div>
                 </div>
                 <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; font-size:12px;">
-                    <div style="color:#aaa;">Entry<br><span style="color:#fff; font-weight:600;">₹{r['entry']}</span></div>
-                    <div style="color:#aaa;">Now<br><span style="color:#fff; font-weight:600;">₹{r['now']}</span></div>
+                    <div style="color:#aaa;">Entry<br><span style="color:#fff; font-weight:600;">Rs.{r['entry']}</span></div>
+                    <div style="color:#aaa;">Now<br><span style="color:#fff; font-weight:600;">Rs.{r['now']}</span></div>
                     <div style="color:#aaa;">Score<br><span style="color:{sc_color}; font-weight:700;">{r['score']}/100</span></div>
                 </div>
                 <div style="margin-top:8px;">
@@ -185,8 +187,7 @@ class PerformanceReviewEngine:
         
         html += '</div>'
         
-        # BLOCK 3: DYNAMIC PERFORMANCE NOTES
-        # Generate insights based on actual data
+        # Performance Notes
         if winners:
             winners_sorted = sorted(winners, key=lambda x: x['pnl'], reverse=True)
             top_winner = winners_sorted[0]
@@ -205,7 +206,6 @@ class PerformanceReviewEngine:
         else:
             what_failed = "All picks were positive this week."
         
-        # Adjustment note based on hit rate
         hit_rate = data.get('hit_rate', 0)
         if hit_rate >= 60:
             adjustment = "Maintaining current strategy. Hit rate is strong."
@@ -216,7 +216,7 @@ class PerformanceReviewEngine:
         
         html += f"""
         <div class="glass" style="padding:20px; margin-top:10px;">
-            <h4 style="margin-bottom:10px;">📝 Performance Notes</h4>
+            <h4 style="margin-bottom:10px;">Performance Notes</h4>
             <ul style="font-size:12px; color:#ccc; line-height:1.8; padding-left:20px;">
                 <li><b>What Worked:</b> {what_worked}</li>
                 <li><b>What Failed:</b> {what_failed}</li>

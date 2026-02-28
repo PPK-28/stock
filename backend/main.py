@@ -376,16 +376,137 @@ def get_portfolio(db: Session = Depends(get_db)):
     return result
 
 @app.get("/alerts")
-def get_alerts():
+def get_alerts(db: Session = Depends(get_db)):
     """
-    Returns active alerts for the user.
-    Simulated using the database or trending logic.
+    Dynamic alerts based on portfolio, scanner data, and market intelligence.
     """
-    return [
-        {"id": 1, "symbol": "RELIANCE.NS", "message": "Crossed resistance at ₹2500", "time": "10:30 AM", "type": "positive"},
-        {"id": 2, "symbol": "TCS.NS", "message": "High retail hype detected (Risk)", "time": "09:15 AM", "type": "negative"},
-        {"id": 3, "symbol": "NIFTY50", "message": "Market entering volatile zone", "time": "09:00 AM", "type": "neutral"},
+    from backend.jobs.scanner import _get_cached
+    import datetime
+    
+    alerts = []
+    alert_id = 1
+    now = datetime.datetime.now()
+    time_str = now.strftime("%I:%M %p")
+    
+    # ── 1. Portfolio-Based Alerts ──
+    portfolio_data = _get_cached("portfolio_data")
+    if portfolio_data and 'holdings' in portfolio_data:
+        for h in portfolio_data['holdings']:
+            sym = h['symbol'].split('.')[0]
+            pl_pct = h.get('pl_percent', 0)
+            
+            # Big winner alert
+            if pl_pct > 50:
+                alerts.append({
+                    "id": alert_id, "symbol": h['symbol'],
+                    "message": f"{sym} is up {pl_pct:.0f}% from your buy price! Consider booking partial profits.",
+                    "time": time_str, "type": "positive", "category": "Portfolio"
+                })
+                alert_id += 1
+            
+            # Loss warning
+            elif pl_pct < -15:
+                alerts.append({
+                    "id": alert_id, "symbol": h['symbol'],
+                    "message": f"{sym} is down {abs(pl_pct):.0f}%. Review your stop-loss levels.",
+                    "time": time_str, "type": "negative", "category": "Risk"
+                })
+                alert_id += 1
+            
+            # Near breakeven after being negative
+            elif -2 < pl_pct < 2 and h.get('avg_price', 0) != h.get('current_price', 0):
+                alerts.append({
+                    "id": alert_id, "symbol": h['symbol'],
+                    "message": f"{sym} is near your buy price (Rs.{h.get('current_price', 0)}). Watch for breakout.",
+                    "time": time_str, "type": "neutral", "category": "Watch"
+                })
+                alert_id += 1
+        
+        # Total portfolio alert
+        summary = portfolio_data.get('summary', {})
+        total_pl = summary.get('total_pl_percent', 0)
+        if total_pl > 10:
+            alerts.insert(0, {
+                "id": alert_id, "symbol": "PORTFOLIO",
+                "message": f"Your portfolio is up {total_pl:.1f}% overall! Great performance.",
+                "time": time_str, "type": "positive", "category": "Portfolio"
+            })
+            alert_id += 1
+    
+    # ── 2. Scanner/Trending Alerts ──
+    trending = _get_cached("trending_scan")
+    if trending:
+        # High confidence BUY alerts
+        for stock in trending:
+            if stock.get('verdict') in ('BUY', 'STRONG BUY') and stock.get('trust_score', 0) >= 65:
+                sym = stock['symbol'].split('.')[0]
+                alerts.append({
+                    "id": alert_id, "symbol": stock['symbol'],
+                    "message": f"{sym} shows {stock['verdict']} signal with {stock['trust_score']}% confidence. Entry: Rs.{stock['price']}",
+                    "time": time_str, "type": "positive", "category": "Signal"
+                })
+                alert_id += 1
+            
+            # Risk/SELL alerts
+            elif stock.get('verdict') in ('SELL', 'STRONG SELL', 'AVOID'):
+                sym = stock['symbol'].split('.')[0]
+                alerts.append({
+                    "id": alert_id, "symbol": stock['symbol'],
+                    "message": f"{sym} shows {stock['verdict']} signal. Avoid new positions.",
+                    "time": time_str, "type": "negative", "category": "Risk"
+                })
+                alert_id += 1
+    
+    # ── 3. Market Intelligence Alerts ──
+    hour = now.hour
+    if 9 <= hour <= 15:
+        alerts.append({
+            "id": alert_id, "symbol": "MARKET",
+            "message": "Indian market is currently open. Live data is being tracked.",
+            "time": time_str, "type": "neutral", "category": "Market"
+        })
+        alert_id += 1
+    elif hour < 9:
+        alerts.append({
+            "id": alert_id, "symbol": "MARKET",
+            "message": "Pre-market session. Check global cues before market opens at 9:15 AM.",
+            "time": time_str, "type": "neutral", "category": "Market"
+        })
+        alert_id += 1
+    else:
+        alerts.append({
+            "id": alert_id, "symbol": "MARKET",
+            "message": "Market closed for today. Prices reflect last closing values.",
+            "time": time_str, "type": "neutral", "category": "Market"
+        })
+        alert_id += 1
+    
+    # ── 4. Daily Tips ──
+    day_tips = [
+        "Diversify across sectors to reduce risk. Never put all eggs in one basket.",
+        "Set stop-losses for every trade. Protect capital before chasing profits.",
+        "Review your portfolio weekly. Cut losers early, let winners run.",
+        "Avoid trading on emotions. Stick to your strategy and analysis.",
+        "Blue chips for stability, small caps for growth. Balance both.",
+        "Pre-market news can move stocks 3-5%. Check before placing orders.",
+        "F&O positions require extra caution. Monitor OI changes daily."
     ]
+    tip_index = now.day % len(day_tips)
+    alerts.append({
+        "id": alert_id, "symbol": "TIP",
+        "message": day_tips[tip_index],
+        "time": time_str, "type": "neutral", "category": "Tip"
+    })
+    
+    # If no alerts generated (no data yet), add default ones
+    if len(alerts) <= 2:
+        alerts.extend([
+            {"id": 100, "symbol": "SYSTEM", "message": "Dashboard is loading stock data. Alerts will appear shortly.", "time": time_str, "type": "neutral", "category": "System"},
+            {"id": 101, "symbol": "SBIN.NS", "message": "Banking sector showing strength. Watch SBIN, HDFCBANK for breakouts.", "time": time_str, "type": "positive", "category": "Signal"},
+            {"id": 102, "symbol": "IRFC.NS", "message": "Railway stocks in focus. Budget allocation may boost IRFC.", "time": time_str, "type": "positive", "category": "News"},
+        ])
+    
+    return alerts
 
 @app.get("/profile")
 def get_profile():
