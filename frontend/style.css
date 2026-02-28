@@ -1472,3 +1472,30 @@ body::before {
         transform: translateX(6px);
     }
 }
+
+/* Alert Filter Buttons */
+.alert-filter-btn {
+    padding: 6px 14px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-muted);
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+    font-family: inherit;
+}
+
+.alert-filter-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+}
+
+.alert-filter-btn.active {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+    font-weight: 600;
+}

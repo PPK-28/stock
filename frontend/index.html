@@ -238,7 +238,34 @@
 
         <!-- ── ALERTS VIEW ── -->
         <section id="view-alerts" class="view">
-            <div class="section-title">🔔 Alerts & Signals</div>
+            <div class="section-title">🔔 Smart Alerts & Intelligence</div>
+            <div id="alert-summary" class="glass"
+                style="padding:15px; margin-bottom:16px; display:flex; gap:12px; flex-wrap:wrap;">
+                <div style="flex:1; min-width:80px; text-align:center;">
+                    <div style="font-size:22px; font-weight:700; color:var(--green);" id="alert-count-positive">0
+                    </div>
+                    <div style="font-size:10px; color:var(--text-muted);">Positive</div>
+                </div>
+                <div style="flex:1; min-width:80px; text-align:center;">
+                    <div style="font-size:22px; font-weight:700; color:var(--red);" id="alert-count-negative">0
+                    </div>
+                    <div style="font-size:10px; color:var(--text-muted);">Warnings</div>
+                </div>
+                <div style="flex:1; min-width:80px; text-align:center;">
+                    <div style="font-size:22px; font-weight:700; color:var(--text-muted);" id="alert-count-neutral">
+                        0</div>
+                    <div style="font-size:10px; color:var(--text-muted);">Info</div>
+                </div>
+            </div>
+            <div id="alert-filters"
+                style="display:flex; gap:8px; margin-bottom:16px; overflow-x:auto; padding-bottom:4px;">
+                <button class="alert-filter-btn active" onclick="filterAlerts('all', this)">All</button>
+                <button class="alert-filter-btn" onclick="filterAlerts('Portfolio', this)">💼 Portfolio</button>
+                <button class="alert-filter-btn" onclick="filterAlerts('Signal', this)">📡 Signals</button>
+                <button class="alert-filter-btn" onclick="filterAlerts('Risk', this)">⚠️ Risk</button>
+                <button class="alert-filter-btn" onclick="filterAlerts('Market', this)">🏛️ Market</button>
+                <button class="alert-filter-btn" onclick="filterAlerts('Tip', this)">💡 Tips</button>
+            </div>
             <div id="alerts-list">
                 <div class="skeleton skeleton-card"></div>
             </div>
@@ -732,21 +759,70 @@
         }
 
         // ── Alerts ──
+        let allAlerts = [];
+
+        function getCategoryIcon(cat) {
+            const icons = { 'Portfolio': '💼', 'Signal': '📡', 'Risk': '⚠️', 'Market': '🏛️', 'Tip': '💡', 'Watch': '👁️', 'News': '📰', 'System': '⚙️' };
+            return icons[cat] || '🔔';
+        }
+        function getCategoryColor(cat) {
+            const colors = { 'Portfolio': '#10b981', 'Signal': '#6366f1', 'Risk': '#ef4444', 'Market': '#3b82f6', 'Tip': '#f59e0b', 'Watch': '#8b5cf6', 'News': '#06b6d4', 'System': '#64748b' };
+            return colors[cat] || '#888';
+        }
+
+        function renderAlerts(alerts) {
+            if (!alerts.length) {
+                document.getElementById('alerts-list').innerHTML = '<div class="card" style="color:var(--text-muted); text-align:center; padding:30px;">No alerts matching this filter</div>';
+                return;
+            }
+            document.getElementById('alerts-list').innerHTML = alerts.map(a => {
+                const icon = getCategoryIcon(a.category);
+                const catColor = getCategoryColor(a.category);
+                const borderColor = a.type === 'positive' ? 'var(--green)' : (a.type === 'negative' ? 'var(--red)' : 'rgba(255,255,255,0.1)');
+                const typeIcon = a.type === 'positive' ? '📈' : (a.type === 'negative' ? '📉' : 'ℹ️');
+                return `
+                <div class="glass alert-item" data-category="${a.category || 'all'}" style="border-left:3px solid ${borderColor}; margin-bottom:10px; padding:14px;">
+                    <div style="display:flex; align-items:flex-start; gap:12px;">
+                        <div style="font-size:24px; line-height:1;">${icon}</div>
+                        <div style="flex:1;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                                <div style="display:flex; align-items:center; gap:8px;">
+                                    <span style="font-weight:700; font-size:13px;">${a.symbol.split('.')[0]}</span>
+                                    <span style="font-size:9px; padding:2px 7px; border-radius:10px; background:${catColor}22; color:${catColor}; font-weight:600;">${a.category || 'Alert'}</span>
+                                </div>
+                                <span style="font-size:10px; color:var(--text-muted);">${a.time}</span>
+                            </div>
+                            <div style="font-size:12px; color:#ccc; line-height:1.5;">${typeIcon} ${a.message}</div>
+                        </div>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        function filterAlerts(category, btn) {
+            document.querySelectorAll('.alert-filter-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            if (category === 'all') {
+                renderAlerts(allAlerts);
+            } else {
+                renderAlerts(allAlerts.filter(a => a.category === category));
+            }
+        }
+
         async function fetchAlerts() {
             try {
                 const resp = await fetch(`${API}/alerts`);
-                const data = await resp.json();
+                allAlerts = await resp.json();
 
-                document.getElementById('alerts-list').innerHTML = data.map(a => `
-            <div class="glass alert-item">
-                <div class="alert-dot ${a.type}"></div>
-                <div class="alert-content">
-                    <div class="alert-symbol">${a.symbol}</div>
-                    <div class="alert-msg">${a.message}</div>
-                    <div class="alert-time">${a.time}</div>
-                </div>
-            </div>
-        `).join('');
+                // Update summary counts
+                const pos = allAlerts.filter(a => a.type === 'positive').length;
+                const neg = allAlerts.filter(a => a.type === 'negative').length;
+                const neu = allAlerts.filter(a => a.type === 'neutral').length;
+                document.getElementById('alert-count-positive').textContent = pos;
+                document.getElementById('alert-count-negative').textContent = neg;
+                document.getElementById('alert-count-neutral').textContent = neu;
+
+                renderAlerts(allAlerts);
             } catch (e) {
                 document.getElementById('alerts-list').innerHTML = '<div class="card" style="color:var(--text-muted);">No alerts</div>';
             }
