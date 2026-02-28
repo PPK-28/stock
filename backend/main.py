@@ -255,39 +255,50 @@ def get_performance_review():
 
 @app.get("/portfolio")
 def get_portfolio(db: Session = Depends(get_db)):
+    # Check cache first
+    from backend.jobs.scanner import _get_cached, _set_cached
+    cached = _get_cached("portfolio_data")
+    if cached:
+        print("[Portfolio] Returning cached data")
+        return cached
+    
     holdings = db.query(models.Portfolio).filter(models.Portfolio.user_id == 1).all()
-    analyzer = StockAnalyzer()
     
     results = []
     total_value = 0
     total_investment = 0
     
-    
-    for h in holdings:
-        # Analyze the stock to get real-time price and advisory
-        print(f"DEBUG_PORTFOLIO: Analyzing {h.symbol}...")
-        analysis = analyzer.analyze_stock(h.symbol)
+    for i, h in enumerate(holdings):
+        # Use lightweight price fetch instead of full analysis
+        current_price = h.avg_price  # default fallback
+        verdict = "HOLD"
+        trust_score = 50
         
-        if analysis:
-            current_price = analysis['price']
-            advisory = analysis['advisory']
-            verdict = analysis['verdict']
-            trust_score = analysis['trust_score']
-            reasoning = analysis['reasoning']
-            futures_data = analysis.get('futures_data', {})
-        else:
-            # Fallback if analysis fails (e.g. no internet)
-            current_price = h.avg_price
-            advisory = {
-                "entry": "N/A", "target": "N/A", "stop_loss": "N/A", "analyst_rating": "Neutral"
-            }
-            verdict = "HOLD"
-            trust_score = 50
-            reasoning = "Data unavailable"
-            futures_data = {}
-
+        try:
+            if i > 0:
+                time.sleep(1.0)  # Rate limit delay
+            ticker = yf.Ticker(h.symbol)
+            hist = ticker.history(period="1d")
+            if not hist.empty:
+                current_price = float(hist['Close'].iloc[-1])
+                # Simple verdict based on price vs avg
+                change_pct = ((current_price - h.avg_price) / h.avg_price) * 100
+                if change_pct > 10:
+                    verdict = "BUY"
+                    trust_score = 70
+                elif change_pct > 0:
+                    verdict = "HOLD"
+                    trust_score = 55
+                else:
+                    verdict = "HOLD"
+                    trust_score = 40
+                print(f"[Portfolio] ✓ {h.symbol}: ₹{current_price:.2f}")
+            else:
+                print(f"[Portfolio] ✗ {h.symbol}: no data, using avg_price")
+        except Exception as e:
+            print(f"[Portfolio] ✗ {h.symbol}: {e}, using avg_price")
+        
         current_price = float(current_price)
-            
         investment = h.quantity * h.avg_price
         current_value = h.quantity * current_price
         pl = current_value - investment
@@ -306,29 +317,33 @@ def get_portfolio(db: Session = Depends(get_db)):
             "pl_percent": round(pl_percent, 2),
             "verdict": verdict,
             "trust_score": trust_score,
-            "advisory": advisory,
-            "reasoning": reasoning,
-            "futures_data": futures_data
+            "advisory": {
+                "entry": f"₹{h.avg_price}",
+                "target": f"{round(current_price * 1.05, 1)}",
+                "stop_loss": f"{round(current_price * 0.95, 1)}",
+                "analyst_rating": f"{verdict} (Conf: {trust_score}%)"
+            },
+            "reasoning": f"Bought at ₹{h.avg_price}, now ₹{round(current_price, 2)}",
+            "futures_data": {}
         })
         
-    # Simple Sector Map for Demo Risk Analysis
+    # Sector Map for Risk Analysis
     sector_map = {
         "RELIANCE": "Energy", "ONGC": "Energy", "NTPC": "Energy",
         "TCS": "IT", "INFY": "IT", "WIPRO": "IT", "HCLTECH": "IT",
         "HDFCBANK": "Finance", "ICICIBANK": "Finance", "SBIN": "Finance",
-        "TATAMOTORS": "Auto", "MARUTI": "Auto", "TMPV": "Auto",
+        "IRFC": "Finance", "YESBANK": "Finance",
+        "TATAMOTORS": "Auto", "MARUTI": "Auto", "TMPV": "Auto", "TMCV": "Auto",
         "SILVERBEES": "Commodities", "GOLDBEES": "Commodities"
     }
     
     sector_alloc = {}
     for r in results:
-        # Extract base symbol from "RELIANCE.NS" -> "RELIANCE"
         base_sym = r['symbol'].split('.')[0]
         sec = sector_map.get(base_sym, "Others")
         val = r['current_price'] * r['quantity']
         sector_alloc[sec] = sector_alloc.get(sec, 0) + val
         
-    # Convert to %
     risk_analysis = []
     if total_value > 0:
         for sec, val in sector_alloc.items():
@@ -338,7 +353,7 @@ def get_portfolio(db: Session = Depends(get_db)):
                 "percent": round((val/total_value)*100, 1)
             })
 
-    return {
+    result = {
         "holdings": results,
         "summary": {
             "total_value": round(total_value, 2),
@@ -348,6 +363,10 @@ def get_portfolio(db: Session = Depends(get_db)):
             "risk_analysis": risk_analysis
         }
     }
+    
+    # Cache for 5 minutes
+    _set_cached("portfolio_data", result)
+    return result
 
 @app.get("/alerts")
 def get_alerts():
