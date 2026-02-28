@@ -8,11 +8,12 @@ _cache = {}
 _cache_lock = threading.Lock()
 CACHE_TTL = 300  # 5 minutes
 
-def _get_cached(key):
+def _get_cached(key, custom_ttl=None):
     with _cache_lock:
         if key in _cache:
             result, ts = _cache[key]
-            if time.time() - ts < CACHE_TTL:
+            ttl = custom_ttl if custom_ttl else CACHE_TTL
+            if time.time() - ts < ttl:
                 return result
     return None
 

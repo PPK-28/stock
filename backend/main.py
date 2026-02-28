@@ -111,7 +111,7 @@ def _portfolio_analyzer_thread():
                     time.sleep(2) # Avoid Yahoo Finance rate limits
                 
                 if verdicts:
-                    _set_cached("portfolio_verdicts", verdicts, ttl_seconds=3600)  # cache for 1 hour
+                    _set_cached("portfolio_verdicts", verdicts)  # cache logic updated
                     print(f"[Portfolio Analyzer] {len(verdicts)} deep verdicts cached!")
         except Exception as e:
             print(f"[Portfolio Analyzer] Error: {e}")
@@ -325,7 +325,7 @@ def get_portfolio(db: Session = Depends(get_db)):
         print(f"[Portfolio] Batch download error: {e}")
     
     # Check deep analysis verdicts
-    cached_verdicts = _get_cached("portfolio_verdicts") or {}
+    cached_verdicts = _get_cached("portfolio_verdicts", custom_ttl=3600) or {}
     
     for h in holdings:
         current_price = prices.get(h.symbol, h.avg_price)  # fallback to avg_price
@@ -345,19 +345,11 @@ def get_portfolio(db: Session = Depends(get_db)):
             trust_score = v_data.get('trust_score', 50)
             advisory_data = v_data.get('advisory', advisory_data)
         
-        # 2. Fallback to basic % change logic if deep is still pending
+        # 2. Fallback if deep AI is still running in background
         elif h.symbol in prices:
-            change_pct = ((current_price - h.avg_price) / h.avg_price) * 100
-            if change_pct > 10:
-                verdict = "BUY"
-                trust_score = 70
-            elif change_pct > 0:
-                verdict = "HOLD"
-                trust_score = 55
-            else:
-                verdict = "HOLD"
-                trust_score = 40
-            advisory_data["analyst_rating"] = f"{verdict} (Conf: {trust_score}%)"
+            verdict = "ANALYZING..."
+            trust_score = 0
+            advisory_data["analyst_rating"] = "Running AI Models..."
         
         current_price = float(current_price)
         investment = h.quantity * h.avg_price
