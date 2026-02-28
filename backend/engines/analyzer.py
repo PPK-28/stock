@@ -116,21 +116,32 @@ class StockAnalyzer:
             volatility_factor = r_data['volatility_score'] / 100
             target_mean = info.get('targetMeanPrice', 0) or 0
             
-            # Smart target: use analyst target when available, else calculate
-            if target_mean > 0 and target_mean > current_price:
-                # Analyst target is above current price — use it
-                base_target = target_mean
-            elif verdict in ('BUY', 'STRONG BUY', 'BUY (Contrarian)'):
-                # No analyst target but bullish — use 10-15% upside
-                uplift = 0.15 if tech_signal == 'BULLISH' else 0.10
-                base_target = current_price * (1 + uplift)
-            elif verdict in ('SELL', 'STRONG SELL', 'AVOID'):
-                # Bearish — target is support level (downside)
-                base_target = max(r_data['stop_loss_price'], current_price * 0.92)
-            else:
-                # HOLD — modest 5% target
-                base_target = current_price * 1.05
+            # ── CALCULATE DISPLAY TARGET (what user sees) ──
+            # Rule: BUY/HOLD → target MUST be ABOVE entry. SELL → target is support level.
             
+            if verdict in ('SELL', 'STRONG SELL', 'AVOID'):
+                # Bearish — show downside support level
+                display_target = max(r_data['stop_loss_price'], current_price * 0.92)
+            elif verdict in ('BUY', 'STRONG BUY', 'BUY (Contrarian)'):
+                # Bullish — target must be above entry
+                if target_mean > current_price * 1.05:
+                    # Analyst target is meaningfully above price — use it
+                    display_target = target_mean
+                elif tech_signal == 'BULLISH':
+                    display_target = current_price * 1.15  # 15% upside
+                else:
+                    display_target = current_price * 1.10  # 10% upside
+                # SAFETY: never let BUY target go below entry + 5%
+                display_target = max(display_target, current_price * 1.05)
+            else:
+                # HOLD — modest upside
+                display_target = current_price * 1.05
+                if target_mean > current_price * 1.03:
+                    display_target = target_mean  # Use analyst if reasonable
+                # SAFETY: never let HOLD target go below entry + 3%
+                display_target = max(display_target, current_price * 1.03)
+            
+            # Secondary targets for the detailed report
             bull_target = current_price * (1 + max(volatility_factor * 0.8, 0.10))
             if target_mean > bull_target: bull_target = target_mean
             
@@ -138,12 +149,7 @@ class StockAnalyzer:
             if r_data['stop_loss_price'] > 0 and bear_target > r_data['stop_loss_price']:
                 bear_target = r_data['stop_loss_price'] * 0.98
             
-            ev_target = (bull_target * 0.2) + (base_target * 0.6) + (bear_target * 0.2)
-            
-            # Ensure target is always >= entry for BUY verdicts
-            display_target = base_target
-            if verdict in ('BUY', 'STRONG BUY', 'BUY (Contrarian)'):
-                display_target = max(base_target, current_price * 1.05)
+            ev_target = (bull_target * 0.2) + (display_target * 0.6) + (bear_target * 0.2)
             
             # --- PILLAR BREAKDOWN for UI ---
             pillars = trust_data.get('pillar_breakdown', {})
