@@ -236,7 +236,7 @@ class StockAnalyzer:
                     </div>
                     <div>
                         <b style="color:#f59e0b;">🏠 BASE (60%)</b><br>
-                        ₹{round(base_target, 1)}
+                        ₹{round(display_target, 1)}
                     </div>
                     <div>
                         <b style="color:#ef4444;">🐻 BEAR (20%)</b><br>

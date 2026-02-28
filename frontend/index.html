@@ -496,20 +496,37 @@
             
             ${fnoTags}
             
-            <button class="analysis-toggle" onclick="toggleAnalysis('${uid}')">
+            <button class="analysis-toggle" onclick="toggleAnalysis('${uid}', '${s.symbol}')">
                 📋 Full Analysis ▼
             </button>
-            <div id="${uid}" class="analysis-detail">
+            <div id="${uid}" class="analysis-detail" style="font-size:13px; line-height:1.6; color:#ccc;">
                 ${s.reasoning || 'No detailed analysis available.'}
             </div>
         </div>`;
             }).join('');
         }
 
-        function toggleAnalysis(id) {
+        async function toggleAnalysis(id, symbol) {
             const el = document.getElementById(id);
-            el.classList.toggle('open');
             const btn = el.previousElementSibling;
+
+            // If opening and content is just 'pending', fetch the real analysis
+            if (!el.classList.contains('open') && el.innerHTML.includes('Analysis pending') && symbol) {
+                btn.textContent = '⏳ Loading Analysis...';
+                try {
+                    const resp = await fetch(`${API}/analyze/${symbol}`);
+                    const data = await resp.json();
+                    if (data.status === 'success' && data.data && data.data.reasoning) {
+                        el.innerHTML = data.data.reasoning;
+                    } else {
+                        el.innerHTML = `<div style="color:var(--red);">❌ ${data.message || 'Analysis failed.'}</div>`;
+                    }
+                } catch (e) {
+                    el.innerHTML = `<div style="color:var(--red);">❌ Network error fetching analysis.</div>`;
+                }
+            }
+
+            el.classList.toggle('open');
             btn.textContent = el.classList.contains('open') ? '📋 Full Analysis ▲' : '📋 Full Analysis ▼';
         }
 
