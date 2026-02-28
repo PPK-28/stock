@@ -16,6 +16,64 @@
 
 <body>
 
+    <!-- ═══════════ LOGIN GATE ═══════════ -->
+    <div id="login-gate" class="login-gate">
+        <div class="login-box">
+            <div class="login-brand">Puni.ai</div>
+            <div class="login-subtitle">Stock Intelligence Platform</div>
+            <div class="login-form">
+                <input type="password" id="login-pin" class="login-input" placeholder="Enter PIN" maxlength="6"
+                    autocomplete="off">
+                <button class="login-btn" onclick="verifyPin()">Unlock 🔓</button>
+            </div>
+            <div id="login-error" class="login-error"></div>
+            <div class="login-footer">🔒 Private Access Only</div>
+        </div>
+    </div>
+
+    <script>
+        // PIN hash (SHA-256 of "2809") — change your PIN by updating this hash
+        const PIN_HASH = "13ee53e1e62e47b2e68f0e20afc363541b07ee8b1cfa1ef87701c9a872db13c5";
+        const SESSION_KEY = "puniai_auth";
+        const SESSION_TTL = 86400000; // 24 hours in ms
+
+        async function sha256(message) {
+            const msgBuffer = new TextEncoder().encode(message);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        async function verifyPin() {
+            const pin = document.getElementById('login-pin').value;
+            const hash = await sha256(pin);
+            if (hash === PIN_HASH) {
+                localStorage.setItem(SESSION_KEY, JSON.stringify({ ts: Date.now() }));
+                document.getElementById('login-gate').style.display = 'none';
+            } else {
+                document.getElementById('login-error').textContent = '❌ Wrong PIN';
+                document.getElementById('login-pin').value = '';
+            }
+        }
+
+        // Auto-login if session is valid
+        (function checkSession() {
+            try {
+                const s = JSON.parse(localStorage.getItem(SESSION_KEY));
+                if (s && (Date.now() - s.ts) < SESSION_TTL) {
+                    document.getElementById('login-gate').style.display = 'none';
+                    return;
+                }
+            } catch (e) { }
+            document.getElementById('login-gate').style.display = 'flex';
+        })();
+
+        // Enter key to submit
+        document.getElementById('login-pin').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') verifyPin();
+        });
+    </script>
+
     <!-- ═══════════ HEADER ═══════════ -->
     <header class="app-header">
         <div class="header-top">

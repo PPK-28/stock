@@ -1360,3 +1360,115 @@ body::before {
 .momentum-bar .bar-fill.negative {
     background: var(--red);
 }
+
+/* ═══════════ LOGIN GATE ═══════════ */
+.login-gate {
+    position: fixed;
+    inset: 0;
+    z-index: 99999;
+    background: var(--bg-deepest);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.login-box {
+    background: rgba(12, 18, 30, 0.95);
+    border: 1px solid rgba(0, 255, 170, 0.15);
+    border-radius: 20px;
+    padding: 40px 36px;
+    text-align: center;
+    width: min(360px, 90vw);
+    box-shadow: 0 0 60px rgba(0, 255, 170, 0.08);
+}
+
+.login-brand {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 36px;
+    font-weight: 700;
+    background: linear-gradient(135deg, #00ffaa, #00d4ff);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 4px;
+}
+
+.login-subtitle {
+    color: var(--text-muted);
+    font-size: 13px;
+    margin-bottom: 28px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+.login-form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.login-input {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 14px 16px;
+    color: #fff;
+    font-size: 18px;
+    text-align: center;
+    letter-spacing: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    outline: none;
+    transition: border-color 0.3s;
+}
+
+.login-input:focus {
+    border-color: var(--accent-primary);
+}
+
+.login-btn {
+    background: linear-gradient(135deg, #00ffaa, #00d4ff);
+    border: none;
+    border-radius: 12px;
+    padding: 14px;
+    color: #000;
+    font-weight: 700;
+    font-size: 15px;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.3s;
+}
+
+.login-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(0, 255, 170, 0.3);
+}
+
+.login-error {
+    color: var(--red);
+    font-size: 13px;
+    margin-top: 10px;
+    min-height: 20px;
+    animation: shake 0.4s;
+}
+
+.login-footer {
+    color: var(--text-dim);
+    font-size: 11px;
+    margin-top: 20px;
+    letter-spacing: 0.5px;
+}
+
+@keyframes shake {
+
+    0%,
+    100% {
+        transform: translateX(0);
+    }
+
+    25% {
+        transform: translateX(-6px);
+    }
+
+    75% {
+        transform: translateX(6px);
+    }
+}
