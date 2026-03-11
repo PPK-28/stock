@@ -21,6 +21,11 @@ import yfinance as yf
 from backend.engines.analyzer import StockAnalyzer
 from backend.engines.portfolio_intelligence import PortfolioIntelligenceSystem
 from backend.engines.performance_review import PerformanceReviewEngine
+from backend.engines.zerodha_manager import ZerodhaManager
+
+# Start Zerodha Auto-Manager
+zm = ZerodhaManager()
+zm.start()
 
 # Create database tables automatically
 models.Base.metadata.create_all(bind=db.engine)
@@ -301,6 +306,12 @@ def get_performance_review():
     html_report = reviewer.generate_review()
     return {"status": "success", "html": html_report}
 
+# --- ZERODHA ROUTES ---
+@app.get("/zerodha/status")
+def get_zerodha_status():
+    status = zm.check_auth()
+    return status
+
 @app.get("/portfolio")
 def get_portfolio(db: Session = Depends(get_db)):
     # Check cache first
@@ -319,12 +330,36 @@ def get_portfolio(db: Session = Depends(get_db)):
     # Batch fetch ALL portfolio prices in ONE call
     symbols = [h.symbol for h in holdings]
     prices = {}
-    try:
-        if symbols:
-            data = yf.download(symbols, period="5d", group_by="ticker", progress=False, threads=False)
-            for sym in symbols:
+    
+    # Try fetching LIVE prices via Zerodha MCP First
+    if zm.status == "CONNECTED" and symbols:
+        kite_symbols = []
+        for sym in symbols:
+            if sym == "TMPV.NS":
+                kite_symbols.append("NSE:TATAMOTORS")
+            else:
+                kite_symbols.append("NSE:" + sym.replace(".NS", ""))
+                
+        try:
+            mcp_res = zm.get_ltp(kite_symbols)
+            if "data" in mcp_res:
+                data = mcp_res["data"]
+                for sym, kite_sym in zip(symbols, kite_symbols):
+                    if kite_sym in data:
+                        prices[sym] = float(data[kite_sym].get("last_price", 0))
+                print(f"[Portfolio] Fetched {len(prices)} LIVE prices via Zerodha MCP!")
+        except Exception as e:
+            print(f"[Portfolio] MCP Fetch Error: {e}")
+
+    # Fallback to yfinance if not all prices fetched
+    missing_symbols = [s for s in symbols if s not in prices]
+    if missing_symbols:
+        try:
+            print(f"[Portfolio] Fetching {len(missing_symbols)} missing prices via yFinance...")
+            data = yf.download(missing_symbols, period="5d", group_by="ticker", progress=False, threads=False)
+            for sym in missing_symbols:
                 try:
-                    if len(symbols) > 1:
+                    if len(missing_symbols) > 1:
                         close_series = data[sym]['Close'].dropna()
                     else:
                         close_series = data['Close'].dropna()
@@ -332,9 +367,9 @@ def get_portfolio(db: Session = Depends(get_db)):
                         prices[sym] = float(close_series.iloc[-1])
                 except Exception:
                     pass
-            print(f"[Portfolio] Batch fetched prices for {len(prices)}/{len(symbols)} stocks")
-    except Exception as e:
-        print(f"[Portfolio] Batch download error: {e}")
+            print(f"[Portfolio] yFinance batch complete.")
+        except Exception as e:
+            print(f"[Portfolio] Batch download error: {e}")
     
     # Check deep analysis verdicts
     cached_verdicts = _get_cached("portfolio_verdicts", custom_ttl=3600) or {}

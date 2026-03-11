@@ -84,9 +84,15 @@
                 <span class="live-dot"></span>
                 <span id="header-date">Loading...</span>
             </div>
-            <button class="btn-share" onclick="shareWhatsApp()">
-                <span>📤</span> Share
-            </button>
+            <div style="display:flex; gap:8px;">
+                <button id="btn-zerodha" class="btn-share" style="background:var(--accent); color:black; display:none;"
+                    onclick="connectZerodha()">
+                    <span>🔗</span> Connect Zerodha
+                </button>
+                <button class="btn-share" onclick="shareWhatsApp()">
+                    <span>📤</span> Share
+                </button>
+            </div>
         </div>
         <div class="market-ticker" id="market-ticker">
             <div class="ticker-item">
@@ -334,6 +340,53 @@
             document.getElementById('header-date').textContent = d.toLocaleDateString('en-IN', opts);
         }
         updateDate();
+
+        // ── Zerodha MCP Auth Check ──
+        let zerodhaLoginUrl = null;
+        async function checkZerodhaStatus() {
+            try {
+                const resp = await fetch(`${API}/zerodha/status`);
+                const data = await resp.json();
+                const btn = document.getElementById('btn-zerodha');
+
+                if (data.status === 'NEEDS_LOGIN' && data.login_url) {
+                    zerodhaLoginUrl = data.login_url;
+                    btn.style.display = 'inline-flex';
+                    btn.style.background = '#ef4444'; // Red attention
+                    btn.style.color = 'white';
+                    btn.innerHTML = '<span>🔗</span> Connect Zerodha';
+                } else if (data.status === 'CONNECTED') {
+                    btn.style.display = 'inline-flex';
+                    btn.style.background = '#10b981'; // Green
+                    btn.style.color = 'white';
+                    btn.innerHTML = '<span>✅</span> Zerodha Live';
+                } else {
+                    btn.style.display = 'none'; // Disconnected / starting up
+                }
+            } catch (e) {
+                console.log("Zerodha status check failed.");
+            }
+        }
+
+        function connectZerodha() {
+            if (zerodhaLoginUrl) {
+                // Open auth link in new tab
+                window.open(zerodhaLoginUrl, "_blank");
+                alert("Please log in using the Zerodha Kite window that just opened.\\n\\nOnce logged in, come back here and the app will sync automatically!");
+
+                // Poll aggressively for a few seconds to detect successful login
+                let checks = 0;
+                const i = setInterval(() => {
+                    checkZerodhaStatus();
+                    checks++;
+                    if (checks > 15) clearInterval(i); // stop after 30s
+                }, 2000);
+            }
+        }
+
+        // Start periodic check
+        setInterval(checkZerodhaStatus, 5000);
+        setTimeout(checkZerodhaStatus, 1000);
 
         // ── Market Indices (fetched on load) ──
         async function fetchMarketIndices() {
