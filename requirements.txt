@@ -8,3 +8,5 @@ python-dotenv
 pydantic
 aiofiles
 mcp
+scikit-learn
+statsmodels

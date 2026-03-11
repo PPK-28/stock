@@ -63,44 +63,51 @@ class TechnicalEngine:
             df['Plus_DI'] = plus_di
             df['Minus_DI'] = minus_di
             
-            # ── SuperTrend ──
+            # ── SuperTrend (Fully Vectorized) ──
             hl2 = (df['High'] + df['Low']) / 2
             atr = df['ATR']
-            upper_band = hl2 + (2 * atr)
-            lower_band = hl2 - (2 * atr)
-            
-            supertrend = pd.Series(index=df.index, dtype=float)
-            direction = pd.Series(index=df.index, dtype=int)
-            
-            for i in range(1, len(df)):
-                if df['Close'].iloc[i] > upper_band.iloc[i-1]:
-                    supertrend.iloc[i] = lower_band.iloc[i]
-                    direction.iloc[i] = 1  # Bullish
-                elif df['Close'].iloc[i] < lower_band.iloc[i-1]:
-                    supertrend.iloc[i] = upper_band.iloc[i]
-                    direction.iloc[i] = -1  # Bearish
+            raw_upper = hl2 + (2 * atr)
+            raw_lower = hl2 - (2 * atr)
+
+            # Vectorized SuperTrend via NumPy iteration (no iloc penalty)
+            close_arr = df['Close'].values
+            upper_arr = raw_upper.values
+            lower_arr = raw_lower.values
+            supertrend_arr = np.full(len(df), np.nan)
+            direction_arr = np.zeros(len(df), dtype=int)
+
+            # Seed first valid value
+            first_valid = np.argmax(~np.isnan(upper_arr))
+            supertrend_arr[first_valid] = lower_arr[first_valid]
+            direction_arr[first_valid] = 1
+
+            for i in range(first_valid + 1, len(df)):
+                prev_st = supertrend_arr[i - 1]
+                if np.isnan(prev_st):
+                    supertrend_arr[i] = lower_arr[i]
+                    direction_arr[i] = 1
+                elif close_arr[i] > prev_st and direction_arr[i - 1] == -1:
+                    supertrend_arr[i] = lower_arr[i]  # Bullish flip
+                    direction_arr[i] = 1
+                elif close_arr[i] < prev_st and direction_arr[i - 1] == 1:
+                    supertrend_arr[i] = upper_arr[i]  # Bearish flip
+                    direction_arr[i] = -1
                 else:
-                    if i > 0 and not pd.isna(supertrend.iloc[i-1]):
-                        supertrend.iloc[i] = supertrend.iloc[i-1]
-                        direction.iloc[i] = direction.iloc[i-1]
-                    else:
-                        supertrend.iloc[i] = lower_band.iloc[i]
-                        direction.iloc[i] = 1
-                        
-            df['SuperTrend'] = supertrend
-            df['ST_Direction'] = direction
-            
-            # ── OBV (On-Balance Volume) ──
-            obv = [0]
-            for i in range(1, len(df)):
-                if df['Close'].iloc[i] > df['Close'].iloc[i-1]:
-                    obv.append(obv[-1] + df['Volume'].iloc[i])
-                elif df['Close'].iloc[i] < df['Close'].iloc[i-1]:
-                    obv.append(obv[-1] - df['Volume'].iloc[i])
-                else:
-                    obv.append(obv[-1])
-            df['OBV'] = obv
-            df['OBV_EMA20'] = pd.Series(obv).ewm(span=20, adjust=False).mean().values
+                    direction_arr[i] = direction_arr[i - 1]
+                    supertrend_arr[i] = (
+                        min(lower_arr[i], prev_st) if direction_arr[i] == 1
+                        else max(upper_arr[i], prev_st)
+                    )
+
+            df['SuperTrend'] = supertrend_arr
+            df['ST_Direction'] = direction_arr
+
+            # ── OBV (On-Balance Volume) — Vectorized via np.where + cumsum ──
+            close_diff = df['Close'].diff()
+            volume_sign = np.where(close_diff > 0, 1, np.where(close_diff < 0, -1, 0))
+            obv_values = (volume_sign * df['Volume'].values).cumsum()
+            df['OBV'] = obv_values
+            df['OBV_EMA20'] = pd.Series(obv_values, index=df.index).ewm(span=20, adjust=False).mean()
             
             # ── Bollinger Bands ──
             df['BB_Mid'] = df['Close'].rolling(window=20).mean()
@@ -116,10 +123,32 @@ class TechnicalEngine:
             df['Momentum_1M'] = df['Close'].pct_change(21) * 100
             df['Momentum_3M'] = df['Close'].pct_change(63) * 100
             df['Momentum_6M'] = df['Close'].pct_change(126) * 100
-            
+
+            # ── Fibonacci Retracement Levels (52-week high-low) ──
+            HIGH_52W = df['High'].rolling(252, min_periods=50).max()
+            LOW_52W  = df['Low'].rolling(252, min_periods=50).min()
+            fib_range = HIGH_52W - LOW_52W
+            df['Fib_236'] = HIGH_52W - 0.236 * fib_range   # 23.6% retracement
+            df['Fib_382'] = HIGH_52W - 0.382 * fib_range   # 38.2% retracement
+            df['Fib_500'] = HIGH_52W - 0.500 * fib_range   # 50.0% retracement
+            df['Fib_618'] = HIGH_52W - 0.618 * fib_range   # 61.8% retracement (golden ratio)
+            df['Fib_786'] = HIGH_52W - 0.786 * fib_range   # 78.6% retracement
+            df['Fib_High_52w'] = HIGH_52W
+            df['Fib_Low_52w']  = LOW_52W
+
+            # ── Williams %R (overbought/oversold oscillator) ──
+            highest_high = df['High'].rolling(14).max()
+            lowest_low   = df['Low'].rolling(14).min()
+            df['Williams_R'] = -100 * (highest_high - df['Close']) / (highest_high - lowest_low + 1e-9)
+
+            # ── Chaikin Money Flow (21-day) ──
+            mfm = ((df['Close'] - df['Low']) - (df['High'] - df['Close'])) / (df['High'] - df['Low'] + 1e-9)
+            df['CMF'] = (mfm * df['Volume']).rolling(21).sum() / df['Volume'].rolling(21).sum()
+
             return df
         except Exception as e:
             print(f"Technical Indicator Error: {e}")
+            import traceback; traceback.print_exc()
             return pd.DataFrame()
 
     def get_technical_report(self, df):
@@ -305,6 +334,68 @@ class TechnicalEngine:
             color = "sell"
         rows.append(("VWAP", f"₹{round(vwap, 1)}", status, color))
         
+        # ── 11. Fibonacci Retracement ──
+        fib_618 = last.get('Fib_618', price)
+        fib_382 = last.get('Fib_382', price)
+        fib_236 = last.get('Fib_236', price)
+        fib_high = last.get('Fib_High_52w', price)
+        if not pd.isna(fib_618) and not pd.isna(fib_382):
+            if price >= fib_236:
+                votes["BUY"] += 1
+                status = f"Above 23.6% Fib (₹{round(fib_236,1)}) — Uptrend zone"
+                color = "buy"
+            elif price >= fib_382:
+                votes["NEUTRAL"] += 1
+                status = f"38.2% Fib Support (₹{round(fib_382,1)}) — Watch zone"
+                color = "neutral"
+            elif price >= fib_618:
+                votes["NEUTRAL"] += 1
+                status = f"Golden Ratio 61.8% (₹{round(fib_618,1)}) — Key support"
+                color = "neutral"
+            else:
+                votes["SELL"] += 1
+                status = f"Below 61.8% Fib — Downtrend, next support ₹{round(last.get('Fib_Low_52w', price),1)}"
+                color = "sell"
+            rows.append(("Fibonacci", f"52W: ₹{round(fib_high,1)}", status, color))
+
+        # ── 12. Williams %R ──
+        williams_r = last.get('Williams_R', -50)
+        if not pd.isna(williams_r):
+            if williams_r < -80:
+                votes["BUY"] += 1
+                status = f"Oversold ({round(williams_r,1)}) → Reversal potential"
+                color = "buy"
+            elif williams_r > -20:
+                votes["SELL"] += 1
+                status = f"Overbought ({round(williams_r,1)}) → Profit taking risk"
+                color = "sell"
+            elif williams_r > -50:
+                votes["BUY"] += 1
+                status = f"Bullish zone ({round(williams_r,1)})"
+                color = "buy"
+            else:
+                votes["SELL"] += 1
+                status = f"Bearish zone ({round(williams_r,1)})"
+                color = "sell"
+            rows.append(("Williams %R", f"{round(williams_r,1)}", status, color))
+
+        # ── 13. Chaikin Money Flow ──
+        cmf = last.get('CMF', 0)
+        if not pd.isna(cmf):
+            if cmf > 0.1:
+                votes["BUY"] += 1
+                status = f"Strong buying pressure (CMF: {round(cmf,2)})"
+                color = "buy"
+            elif cmf < -0.1:
+                votes["SELL"] += 1
+                status = f"Selling pressure (CMF: {round(cmf,2)})"
+                color = "sell"
+            else:
+                votes["NEUTRAL"] += 1
+                status = f"Neutral money flow (CMF: {round(cmf,2)})"
+                color = "neutral"
+            rows.append(("CMF", f"{round(cmf,3)}", status, color))
+
         # ── Consensus Score ──
         total_votes = votes["BUY"] + votes["SELL"] + votes["NEUTRAL"]
         score = round((votes["BUY"] / total_votes) * 100) if total_votes > 0 else 50
@@ -334,9 +425,21 @@ class TechnicalEngine:
             </tr>
             """
         report_html += "</table>"
+
+        # Fibonacci levels for UI
+        fib_levels = {
+            "fib_236": round(float(fib_236), 2) if not pd.isna(fib_236) else None,
+            "fib_382": round(float(fib_382), 2) if not pd.isna(fib_382) else None,
+            "fib_500": round(float(last.get('Fib_500', price)), 2),
+            "fib_618": round(float(fib_618), 2) if not pd.isna(fib_618) else None,
+            "fib_786": round(float(last.get('Fib_786', price)), 2),
+            "high_52w": round(float(fib_high), 2) if not pd.isna(fib_high) else None,
+            "low_52w": round(float(last.get('Fib_Low_52w', price)), 2),
+        }
         
         return {
             "score": score,
             "votes": votes,
-            "report_html": report_html
+            "report_html": report_html,
+            "fib_levels": fib_levels,
         }
