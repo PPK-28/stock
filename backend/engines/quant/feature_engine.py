@@ -37,7 +37,11 @@ class FeatureEngine:
         feat = self._add_price_structure_features(feat)
         feat = self._add_trend_features(feat)
         feat = self._add_target(feat)
-        feat.dropna(inplace=True)
+        
+        # Only drop rows where ALL features are NaN (e.g., the very first few rows)
+        # We must NOT drop where targets are NaN, because the most recent 5 days will
+        # inherently have NaN targets, and those are exactly the days we need to predict!
+        feat.dropna(subset=[c for c in feat.columns if c not in ['target_5d_direction', 'target_5d_return']], inplace=True)
         return feat
 
     # ── 1. Return Features ──────────────────────────────────────────────────

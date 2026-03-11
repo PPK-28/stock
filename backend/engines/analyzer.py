@@ -27,6 +27,8 @@ from backend.engines.trust_score import TrustScoreCalculator
 from backend.engines.quant.kalman_filter import KalmanPriceFilter
 from backend.engines.quant.arima_engine import ARIMAEngine
 from backend.engines.quant.ml_engine import MLDirectionEngine
+from backend.engines.quant.lstm_engine import LSTMEngine
+from backend.engines.quant.prophet_engine import ProphetForecaster
 from backend.engines.quant.monte_carlo import MonteCarloEngine
 from backend.engines.quant.backtester import Backtester
 from backend.engines.quant.feature_engine import FeatureEngine
@@ -52,7 +54,9 @@ class StockAnalyzer:
         self.futures   = FuturesEngine()
         self.kalman    = KalmanPriceFilter(R=0.05, Q=1e-5)
         self.arima     = ARIMAEngine()
+        self.prophet   = ProphetForecaster()
         self.ml        = MLDirectionEngine()
+        self.lstm      = LSTMEngine()
         self.mc        = MonteCarloEngine(n_simulations=3000, horizon_days=63)
         self.backtester = Backtester(min_periods=126)
         self.features  = FeatureEngine()
@@ -161,6 +165,14 @@ class StockAnalyzer:
             )
             arima_score = arima_result.get('score', 50)
 
+            # ── PHASE 8.5: PROPHET FORECAST ──
+            prophet_result = self._safe_run(
+                lambda: self.prophet.forecast(hist['Close'], horizon=5),
+                default={"method": "N/A", "direction": "NEUTRAL", "forecast_return_pct": 0,
+                         "forecast_price": current_price, "confidence": 50, "score": 50}
+            )
+            prophet_score = prophet_result.get('score', 50)
+
             # ── PHASE 9: ML ENSEMBLE ──
             ml_result = self._safe_run(
                 lambda: self._run_ml(hist),
@@ -168,6 +180,14 @@ class StockAnalyzer:
                          "confidence": 50, "score": 50}
             )
             ml_score = ml_result.get('score', 50)
+
+            # ── PHASE 9.5: LSTM FORECAST ──
+            lstm_result = self._safe_run(
+                lambda: self.lstm.predict(self.features.build_features(hist.copy())),
+                default={"method": "N/A", "direction": "NEUTRAL", "probability": 0.5,
+                         "confidence": 50, "score": 50}
+            )
+            lstm_score = lstm_result.get('score', 50)
 
             # ── PHASE 10: MONTE CARLO ──
             target_price = float(current_price * 1.15)
@@ -190,19 +210,19 @@ class StockAnalyzer:
             # ── PHASE 12: HYBRID ENSEMBLE SCORE ──
             # Weight breakdown (professional quant desk approach):
             # Traditional (technicals + fundamentals): 45%
-            # Time-series (Kalman + ARIMA): 25%
-            # ML Ensemble: 20%
+            # Time-series (Kalman + ARIMA + Prophet): 25%
+            # ML Ensemble (RF/XGB + LSTM): 20%
             # Monte Carlo (probabilistic): 10%
             hybrid_score = (
                 traditional_trust  * 0.45 +
-                ((kalman_score + arima_score) / 2) * 0.25 +
-                ml_score           * 0.20 +
+                ((kalman_score + arima_score + prophet_score) / 3) * 0.25 +
+                ((ml_score + lstm_score) / 2)           * 0.20 +
                 mc_score           * 0.10
             )
             hybrid_score = round(min(100, max(0, hybrid_score)), 1)
 
             # Ensemble agreement: std of all model scores (lower = more agreement)
-            all_scores = [traditional_trust, kalman_score, arima_score, ml_score, mc_score]
+            all_scores = [traditional_trust, kalman_score, arima_score, prophet_score, ml_score, lstm_score, mc_score]
             ensemble_std = float(np.std(all_scores))
             ensemble_agreement = max(0, 100 - ensemble_std * 1.5)
 
@@ -223,7 +243,7 @@ class StockAnalyzer:
 
             display_target = self._compute_display_target(
                 final_verdict, current_price, target_mean, tech_signal,
-                arima_result, mc_result
+                arima_result, prophet_result, mc_result
             )
 
             bull_target = max(
@@ -246,7 +266,7 @@ class StockAnalyzer:
                 mom_1m, mom_3m, mom_6m, momentum_score,
                 risk_lvl, r_data,
                 final_verdict, trust_data,
-                kalman_signal, arima_result, ml_result, mc_result, bt_result,
+                kalman_signal, arima_result, prophet_result, ml_result, lstm_result, mc_result, bt_result,
                 hybrid_score, ensemble_agreement, ci_low, ci_high,
                 bull_target, display_target, bear_target, ev_target,
                 fib_levels
@@ -270,7 +290,9 @@ class StockAnalyzer:
                 "quant_data": {
                     "kalman":       kalman_signal,
                     "arima":        arima_result,
+                    "prophet":      prophet_result,
                     "ml":           ml_result,
+                    "lstm":         lstm_result,
                     "monte_carlo":  mc_result,
                     "backtesting":  bt_result,
                     "fib_levels":   fib_levels,
@@ -339,10 +361,11 @@ class StockAnalyzer:
 
     def _compute_display_target(
         self, verdict: str, price: float, target_mean: float,
-        tech_signal: str, arima_result: dict, mc_result: dict
+        tech_signal: str, arima_result: dict, prophet_result: dict, mc_result: dict
     ) -> float:
         """Compute display target price using multiple model inputs."""
         arima_price = arima_result.get('forecast_price', 0) or 0
+        prophet_price = prophet_result.get('forecast_price', 0) or 0
         mc_median   = mc_result.get('price_63d_median', 0) or 0
 
         if verdict in ('SELL', 'STRONG SELL', 'AVOID'):
@@ -350,7 +373,7 @@ class StockAnalyzer:
             return max(downside, price * 0.92)
 
         elif verdict in ('BUY', 'STRONG BUY', 'BUY (Contrarian)'):
-            candidates = [t for t in [target_mean, arima_price, mc_median] if t > price * 1.03]
+            candidates = [t for t in [target_mean, arima_price, prophet_price, mc_median] if t > price * 1.03]
             if candidates:
                 display = sum(candidates) / len(candidates)  # Average bullish targets
             else:
@@ -371,7 +394,7 @@ class StockAnalyzer:
         mom_1m, mom_3m, mom_6m, momentum_score,
         risk_lvl, r_data,
         final_verdict, trust_data,
-        kalman_signal, arima_result, ml_result, mc_result, bt_result,
+        kalman_signal, arima_result, prophet_result, ml_result, lstm_result, mc_result, bt_result,
         hybrid_score, ensemble_agreement, ci_low, ci_high,
         bull_target, display_target, bear_target, ev_target,
         fib_levels
@@ -394,7 +417,9 @@ class StockAnalyzer:
 
         kalman_icon = "🔼" if kalman_signal.get('trend_direction') == "UP" else ("🔽" if kalman_signal.get('trend_direction') == "DOWN" else "➡️")
         arima_icon  = "🟢" if arima_result.get('direction') == "BULLISH" else "🔴"
+        prophet_icon = "🟢" if prophet_result.get('direction') == "BULLISH" else "🔴"
         ml_icon     = "🟢" if ml_result.get('direction') == "BULLISH" else "🔴"
+        lstm_icon   = "🟢" if lstm_result.get('direction') == "BULLISH" else "🔴"
         mc_icon     = "🟢" if mc_result.get('prob_profit', 50) > 55 else "🔴"
 
         ml_acc = ml_result.get('rf_accuracy')
@@ -456,14 +481,16 @@ class StockAnalyzer:
                     <div style="font-size:10px; color:var(--text-muted);">Smoothed: ₹{kalman_signal.get('smoothed_price','—')} | Noise: {kalman_signal.get('noise_level','—')}%</div>
                 </div>
                 <div style="background:rgba(255,255,255,0.04); padding:8px; border-radius:6px;">
-                    <div style="color:var(--text-muted); font-size:9px; text-transform:uppercase;">ARIMA ({arima_result.get('method','N/A')})</div>
-                    <div style="font-weight:700;">{arima_icon} {arima_result.get('direction','N/A')} ({arima_result.get('forecast_return_pct',0):+.2f}%)</div>
-                    <div style="font-size:10px; color:var(--text-muted);">5d Target: ₹{arima_result.get('forecast_price','—')} | Conf: {arima_result.get('confidence',50):.0f}%</div>
+                    <div style="color:var(--text-muted); font-size:9px; text-transform:uppercase;">Time-Series Forecast</div>
+                    <div style="font-weight:700;">ARIMA: {arima_icon} {arima_result.get('direction','—')}</div>
+                    <div style="font-weight:700;">PROPHET: {prophet_icon} {prophet_result.get('direction','—')}</div>
+                    <div style="font-size:10px; color:var(--text-muted);">Conf: A={arima_result.get('confidence',50):.0f}% P={prophet_result.get('confidence',50):.0f}%</div>
                 </div>
                 <div style="background:rgba(255,255,255,0.04); padding:8px; border-radius:6px;">
-                    <div style="color:var(--text-muted); font-size:9px; text-transform:uppercase;">ML Ensemble {ml_acc_str}</div>
-                    <div style="font-weight:700;">{ml_icon} {ml_result.get('direction','N/A')} (P={ml_result.get('probability',0.5):.2f})</div>
-                    <div style="font-size:10px; color:var(--text-muted);">Agree: {round(ml_result.get('ensemble_agreement',0)*100)}% | Features used: {len(ml_result.get('top_features',[]))}</div>
+                    <div style="color:var(--text-muted); font-size:9px; text-transform:uppercase;">ML Direction Ens. {ml_acc_str}</div>
+                    <div style="font-weight:700;">XGB/RF: {ml_icon} {ml_result.get('direction','N/A')}</div>
+                    <div style="font-weight:700;">LSTM: {lstm_icon} {lstm_result.get('direction','N/A')}</div>
+                    <div style="font-size:10px; color:var(--text-muted);">Agree: {round(ml_result.get('ensemble_agreement',0)*100)}%</div>
                 </div>
                 <div style="background:rgba(255,255,255,0.04); padding:8px; border-radius:6px;">
                     <div style="color:var(--text-muted); font-size:9px; text-transform:uppercase;">Monte Carlo (3000 paths)</div>
@@ -489,7 +516,7 @@ class StockAnalyzer:
                 <div><div style='color:var(--text-muted);'>Fund</div><div style='font-weight:700;'>{round(fund_score)}</div></div>
                 <div><div style='color:var(--text-muted);'>Sent</div><div style='font-weight:700;'>{round(sent_score)}</div></div>
                 <div><div style='color:var(--text-muted);'>Mom</div><div style='font-weight:700;'>{round(momentum_score)}</div></div>
-                <div><div style='color:var(--text-muted);'>Risk</div><div style='font-weight:700;'>{round(100-risk_score)}</div></div>
+                <div><div style='color:var(--text-muted);'>Risk</div><div style='font-weight:700;'>{round(100-r_data['score'])}</div></div>
             </div>
             <div style="margin-top:6px; font-size:10px; color:var(--text-muted); text-align:center;">
                 Hybrid Score: <b style="color:var(--accent);">{hybrid_score}/100</b>
