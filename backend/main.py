@@ -389,7 +389,7 @@ def get_portfolio(db: Session = Depends(get_db)):
     if missing_symbols:
         try:
             print(f"[Portfolio] Fetching {len(missing_symbols)} missing prices via yFinance...")
-            data = yf.download(missing_symbols, period="5d", group_by="ticker", progress=False, threads=False)
+            data = yf.download(missing_symbols, period="5d", group_by="ticker", progress=False, threads=True)
             for sym in missing_symbols:
                 try:
                     if len(missing_symbols) > 1:

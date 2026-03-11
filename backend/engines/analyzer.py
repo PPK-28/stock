@@ -57,7 +57,7 @@ class StockAnalyzer:
         self.prophet   = ProphetForecaster()
         self.ml        = MLDirectionEngine()
         self.lstm      = LSTMEngine()
-        self.mc        = MonteCarloEngine(n_simulations=3000, horizon_days=63)
+        self.mc        = MonteCarloEngine(n_simulations=500, horizon_days=63)
         self.backtester = Backtester(min_periods=126)
         self.features  = FeatureEngine()
 
@@ -77,7 +77,7 @@ class StockAnalyzer:
 
             # ── PHASE 0: DATA COLLECTION ──
             ticker = yf.Ticker(symbol)
-            hist   = ticker.history(period="2y")  # Extended to 2y for ML training
+            hist   = ticker.history(period="1y")  # Reduced to 1y to improve load speed
             info   = ticker.info
 
             if hist.empty or len(hist) < 10:
@@ -493,7 +493,7 @@ class StockAnalyzer:
                     <div style="font-size:10px; color:var(--text-muted);">Agree: {round(ml_result.get('ensemble_agreement',0)*100)}%</div>
                 </div>
                 <div style="background:rgba(255,255,255,0.04); padding:8px; border-radius:6px;">
-                    <div style="color:var(--text-muted); font-size:9px; text-transform:uppercase;">Monte Carlo (3000 paths)</div>
+                    <div style="color:var(--text-muted); font-size:9px; text-transform:uppercase;">Monte Carlo (500 paths)</div>
                     <div style="font-weight:700;">{mc_icon} P(Profit): {mc_result.get('prob_profit',50):.1f}%</div>
                     <div style="font-size:10px; color:var(--text-muted);">Sharpe: {mc_result.get('simulated_sharpe',0):.2f} | VaR95: ₹{mc_result.get('var_95_price','—')}</div>
                 </div>
