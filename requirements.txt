@@ -10,5 +10,3 @@ aiofiles
 mcp
 scikit-learn
 statsmodels
-tensorflow
-prophet

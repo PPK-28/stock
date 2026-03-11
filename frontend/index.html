@@ -391,36 +391,53 @@
         // ── Market Indices (fetched on load) ──
         async function fetchMarketIndices() {
             try {
-                const symbols = [
-                    { id: 'nifty', sym: '^NSEI' },
-                    { id: 'sensex', sym: '^BSESN' },
-                    { id: 'banknifty', sym: '^NSEBANK' }
-                ];
-                // Use analyze endpoint to get quick price data
-                // For efficiency, we'll just set reasonable defaults and update if we get data
-                const niftyResp = await fetch(`${API}/analyze/^NSEI`);
-                if (niftyResp.ok) {
-                    const data = await niftyResp.json();
-                    if (data.status === 'success' && data.data) {
-                        const price = data.data.price;
-                        document.getElementById('nifty-val').textContent = Number(price).toLocaleString('en-IN');
-                        const chg = ((Math.random() - 0.4) * 1.5).toFixed(2); // approx
+                const resp = await fetch(`${API}/market_indices`);
+                const data = await resp.json();
+                
+                if (data.status === 'success' && data.data) {
+                    const indices = data.data;
+                    
+                    // Nifty 50
+                    if (indices['^NSEI']) {
+                        const nifty = indices['^NSEI'];
+                        document.getElementById('nifty-val').textContent = Number(nifty.price).toLocaleString('en-IN', {maximumFractionDigits: 0});
+                        const chg = nifty.change_pct;
                         const el = document.getElementById('nifty-chg');
                         el.textContent = `${chg > 0 ? '+' : ''}${chg}%`;
                         el.className = `ticker-change ${chg >= 0 ? 'up' : 'down'}`;
 
-                        // Update mood
+                        // Update mood based on Nifty
                         document.getElementById('stat-mood').textContent = chg >= 0.5 ? 'Bullish' : (chg >= -0.5 ? 'Neutral' : 'Bearish');
                         const moodSub = document.getElementById('stat-nifty-chg');
                         moodSub.textContent = `Nifty: ${chg > 0 ? '+' : ''}${chg}%`;
                         moodSub.className = `stat-sub ${chg >= 0 ? 'text-green' : 'text-red'}`;
                     }
+                    
+                    // Sensex
+                    if (indices['^BSESN']) {
+                        const sensex = indices['^BSESN'];
+                        document.getElementById('sensex-val').textContent = Number(sensex.price).toLocaleString('en-IN', {maximumFractionDigits: 0});
+                        const chg = sensex.change_pct;
+                        const el = document.getElementById('sensex-chg');
+                        el.textContent = `${chg > 0 ? '+' : ''}${chg}%`;
+                        el.className = `ticker-change ${chg >= 0 ? 'up' : 'down'}`;
+                    }
+                    
+                    // Bank Nifty
+                    if (indices['^NSEBANK']) {
+                        const bnk = indices['^NSEBANK'];
+                        document.getElementById('banknifty-val').textContent = Number(bnk.price).toLocaleString('en-IN', {maximumFractionDigits: 0});
+                        const chg = bnk.change_pct;
+                        const el = document.getElementById('banknifty-chg');
+                        el.textContent = `${chg > 0 ? '+' : ''}${chg}%`;
+                        el.className = `ticker-change ${chg >= 0 ? 'up' : 'down'}`;
+                    }
                 }
             } catch (e) {
                 console.log('Market indices fetch skipped:', e.message);
-                document.getElementById('stat-mood').textContent = 'Slightly Bullish';
-                document.getElementById('stat-nifty-chg').textContent = 'Nifty 50: +0.4%';
-                document.getElementById('stat-nifty-chg').className = 'stat-sub text-green';
+                document.getElementById('stat-mood').textContent = 'Neutral';
+                document.getElementById('stat-nifty-chg').textContent = 'Nifty 50: —';
+                document.getElementById('stat-nifty-chg').className = 'stat-sub text-muted';
             }
         }
 

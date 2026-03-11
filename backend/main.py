@@ -200,6 +200,39 @@ class IntelligenceRequest(BaseModel):
 
 # --- API Routes ---
 
+@app.get("/market_indices")
+def get_market_indices():
+    """Fast endpoint to fetch live Nifty, Sensex, and Bank Nifty."""
+    from backend.jobs.scanner import _get_cached, _set_cached
+    cached = _get_cached("market_indices_data")
+    if cached:
+        return {"status": "success", "data": cached}
+        
+    symbols = ['^NSEI', '^BSESN', '^NSEBANK']
+    results = {}
+    try:
+        data = yf.download(symbols, period="5d", group_by="ticker", progress=False, threads=False)
+        for sym in symbols:
+            try:
+                close_series = data[sym]['Close'].dropna()
+                if len(close_series) >= 2:
+                    current = float(close_series.iloc[-1])
+                    prev = float(close_series.iloc[-2])
+                    chg_pct = ((current - prev) / prev) * 100
+                    results[sym] = {"price": current, "change_pct": round(chg_pct, 2)}
+                elif len(close_series) == 1:
+                    current = float(close_series.iloc[-1])
+                    results[sym] = {"price": current, "change_pct": 0.0}
+            except Exception:
+                pass
+        
+        if results:
+            _set_cached("market_indices_data", results, custom_ttl=60)
+    except Exception as e:
+        print(f"[Market Indices] Error: {e}")
+        
+    return {"status": "success", "data": results}
+
 @app.get("/trending")
 async def get_trending_stocks():
     scanner = PreMarketScanner()
